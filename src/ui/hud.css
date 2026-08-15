@@ -1,0 +1,484 @@
+:root {
+  --ink: #f2f5fa;
+  --dim: rgba(242, 245, 250, 0.58);
+  --accent: #ff5d3a;
+  --good: #1fd67f;
+  --panel: rgba(10, 12, 18, 0.82);
+  --edge: rgba(255, 255, 255, 0.12);
+  --font: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #05070c;
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 10;
+  font-variant-numeric: tabular-nums;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.hud__corner {
+  position: absolute;
+}
+.hud__corner--tl {
+  top: max(18px, env(safe-area-inset-top));
+  left: max(20px, env(safe-area-inset-left));
+}
+.hud__corner--tr {
+  top: max(18px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
+  text-align: right;
+}
+.hud__corner--bl {
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: max(20px, env(safe-area-inset-left));
+}
+
+/* ------------------------------------------------------------------ score */
+
+.score {
+  font-size: clamp(26px, 4.4vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.65);
+}
+
+.score__sub {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 4px;
+  min-height: 20px;
+}
+
+.pending {
+  font-size: clamp(13px, 1.8vw, 17px);
+  font-weight: 600;
+  color: var(--good);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+}
+
+.combo {
+  font-size: clamp(13px, 1.8vw, 17px);
+  font-weight: 700;
+  color: var(--dim);
+  transition: color 0.25s ease;
+}
+.combo.is-hot {
+  color: var(--accent);
+  text-shadow: 0 0 18px rgba(255, 93, 58, 0.7);
+}
+
+.speed {
+  font-size: clamp(12px, 1.6vw, 15px);
+  font-weight: 600;
+  color: var(--dim);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+}
+
+/* ------------------------------------------------------------------ meter */
+
+.meter {
+  width: clamp(140px, 22vw, 210px);
+  transition: opacity 0.3s ease;
+}
+.meter__label {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  color: var(--dim);
+  margin-bottom: 5px;
+}
+.meter__track {
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.13);
+  overflow: hidden;
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
+.meter__fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #3aa9ff, #7fe3ff);
+  transition: width 0.12s linear;
+}
+.meter.is-active .meter__fill {
+  background: linear-gradient(90deg, var(--accent), #ffb43a);
+}
+.meter.is-low .meter__fill {
+  background: linear-gradient(90deg, #6a2f26, #a8503c);
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(242, 245, 250, 0.38);
+  letter-spacing: 0.05em;
+  max-width: 240px;
+}
+
+/* ------------------------------------------------------------ trick panel */
+
+.trick-panel {
+  position: absolute;
+  top: 50%;
+  right: max(24px, env(safe-area-inset-right));
+  transform: translateY(-50%) translateX(18px);
+  width: clamp(154px, 20vw, 196px);
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.22s ease,
+    transform 0.28s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.hud.is-trick .trick-panel {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+.trick-panel__name {
+  font-size: clamp(15px, 2.1vw, 19px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 10px;
+  line-height: 1.15;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.row__k {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  font-weight: 700;
+}
+.row__v {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quality {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--edge);
+}
+.quality__track {
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.quality__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  transition:
+    width 0.1s linear,
+    background 0.2s linear;
+}
+.quality__label {
+  margin-top: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  color: var(--dim);
+}
+
+/* ---------------------------------------------------------- commit button */
+
+.commit {
+  position: absolute;
+  bottom: max(26px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 22px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 93, 58, 0.9);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(255, 93, 58, 0.35);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  opacity: 1;
+}
+.commit.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(20px);
+}
+.commit__key {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28);
+  letter-spacing: 0.06em;
+}
+
+/* ----------------------------------------------------------------- prompt */
+
+.prompt {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translateX(-50%);
+  padding: 9px 18px;
+  border-radius: 99px;
+  background: rgba(10, 12, 18, 0.72);
+  border: 1px solid var(--edge);
+  font-size: clamp(12px, 1.7vw, 15px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(10px);
+  transition: opacity 0.25s ease;
+}
+.prompt.is-hidden {
+  opacity: 0;
+}
+
+/* ----------------------------------------------------------------- banner */
+
+.banner {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  transform: translate(-50%, -14px) scale(0.96);
+  text-align: center;
+  opacity: 0;
+  transition:
+    opacity 0.22s ease,
+    transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.banner.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+.banner__trick {
+  font-size: clamp(24px, 5vw, 46px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-shadow: 0 3px 26px rgba(0, 0, 0, 0.8);
+}
+.banner__quality {
+  margin-top: 3px;
+  font-size: clamp(11px, 1.5vw, 13px);
+  font-weight: 700;
+  letter-spacing: 0.26em;
+}
+.q-PERFECT {
+  color: #3affb0;
+}
+.q-CLEAN {
+  color: #7fe3ff;
+}
+.q-ROUGH {
+  color: #ffd23f;
+}
+.q-SLAM {
+  color: #ff9a3a;
+}
+.q-BAIL {
+  color: #ff4d3a;
+}
+.banner__points {
+  margin-top: 8px;
+  font-size: clamp(17px, 2.8vw, 26px);
+  font-weight: 700;
+  color: var(--good);
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
+}
+.banner__note {
+  margin-top: 6px;
+  font-size: clamp(11px, 1.5vw, 13px);
+  color: var(--dim);
+}
+
+/* ---------------------------------------------------------------- overlay */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, rgba(6, 9, 16, 0.72), rgba(3, 5, 9, 0.94));
+  pointer-events: auto;
+  padding: 20px;
+  transition: opacity 0.35s ease;
+  backdrop-filter: blur(3px);
+}
+.overlay.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel {
+  width: min(660px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: clamp(20px, 3.4vw, 34px);
+  border-radius: 20px;
+  background: rgba(12, 15, 22, 0.9);
+  border: 1px solid var(--edge);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+}
+.panel h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+.panel h3 {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  font-weight: 700;
+}
+.panel p {
+  margin: 0 0 9px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(242, 245, 250, 0.78);
+}
+.panel b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(16px, 3vw, 32px);
+}
+@media (max-width: 620px) {
+  .cols {
+    grid-template-columns: 1fr;
+  }
+}
+.panel__foot {
+  margin-top: 18px !important;
+  padding-top: 14px;
+  border-top: 1px solid var(--edge);
+  font-size: 12px !important;
+  color: var(--dim) !important;
+}
+
+.panel--start {
+  text-align: left;
+}
+.brand {
+  font-size: clamp(34px, 7vw, 62px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  margin-bottom: 10px;
+}
+.brand span {
+  color: var(--accent);
+}
+.tagline {
+  font-size: clamp(13px, 1.9vw, 16px) !important;
+  margin-bottom: 22px !important;
+  max-width: 46ch;
+}
+
+.start-btn {
+  margin-top: 24px;
+  width: 100%;
+  padding: 15px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
+  box-shadow: 0 10px 34px rgba(255, 93, 58, 0.34);
+}
+.start-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 40px rgba(255, 93, 58, 0.45);
+}
+.start-btn:active {
+  transform: translateY(1px);
+}
+
+/* Landscape phones: the trick panel would collide with the thumbs. */
+@media (max-height: 460px) {
+  .trick-panel {
+    top: auto;
+    bottom: 12px;
+    transform: none;
+    padding: 10px 12px;
+  }
+  .hud.is-trick .trick-panel {
+    transform: none;
+  }
+  .commit {
+    bottom: 12px;
+    left: auto;
+    right: 50%;
+    transform: translateX(50%);
+  }
+  .commit.is-hidden {
+    transform: translateX(50%) translateY(20px);
+  }
+}

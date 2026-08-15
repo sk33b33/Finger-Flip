@@ -1,0 +1,32 @@
+{
+  "name": "finger-flip",
+  "version": "0.1.0",
+  "description": "A 3D skateboarding game where you flip the board with a finger from each hand, in slow motion.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sk33b33/Finger-Flip.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sk33b33/Finger-Flip/issues"
+  },
+  "homepage": "https://github.com/sk33b33/Finger-Flip#readme",
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0",
+    "vite": "^6.4.3"
+  },
+  "private": true,
+  "type": "module"
+}
