@@ -36,6 +36,10 @@ const GOOD = new Color(0x35f0a0);
 const OK = new Color(0xffd23f);
 const BAD = new Color(0xff4d3a);
 
+// Where the finger-home hints sit along the deck: over the truck bolts, the
+// same spot the keyboard fingers rest at.
+const HOME_HINT = 0.22;
+
 const _v = new Vector3();
 const _n = new Vector3();
 const _q = new Quaternion();
@@ -94,6 +98,31 @@ export default class TrickFX extends Group {
       this.add(tip);
       this.tips.push({ group: tip, ring, core, halo });
     }
+
+    // ------------------------------------------------------ finger homes ---
+    // Where to put your fingers, shown only while there are none on the board.
+    // A touch player arriving in the close-up for the first time has no other
+    // way of knowing the deck is the control surface.
+    this.homes = [];
+    for (const along of [-HOME_HINT, HOME_HINT]) {
+      const ring = new Mesh(
+        new RingGeometry(0.028, 0.038, 28),
+        new MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0,
+          blending: AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      const carrier = new Group();
+      carrier.add(ring);
+      carrier.userData.along = along;
+      this.add(carrier);
+      this.homes.push({ carrier, ring });
+    }
+    this.homeFade = 0;
 
     // ------------------------------------------------------- hand plane ---
     // Nested in a carrier: the carrier takes the stance rotation, the mesh keeps
@@ -226,6 +255,24 @@ export default class TrickFX extends Group {
       const scale = 1 + 0.35 * c;
       t.ring.scale.setScalar(scale);
       t.halo.scale.setScalar(0.7 + 0.9 * c);
+    }
+
+    // ------------------------------------------------------ finger homes ---
+    // Fade the hints out the moment a finger arrives, and back in if the player
+    // takes both off again.
+    const anyDown = fingers.fingers.some((f) => f.active);
+    const wantHomes = trickActive && !anyDown ? 1 : 0;
+    this.homeFade = MathUtils.lerp(this.homeFade, wantHomes, 1 - Math.exp(-7 * realDelta));
+    const pulse = 0.62 + 0.38 * Math.sin(performance.now() * 0.005);
+    for (const h of this.homes) {
+      const show = this.homeFade > 0.02 && o > 0.02;
+      h.carrier.visible = show;
+      if (!show) continue;
+      _v.set(0, 0, h.carrier.userData.along).applyQuaternion(stanceQuat).add(board.position);
+      h.carrier.position.copy(_v);
+      h.carrier.quaternion.copy(stanceQuat);
+      h.ring.material.opacity = this.homeFade * o * 0.5 * pulse;
+      h.ring.scale.setScalar(1 + 0.16 * (1 - pulse));
     }
 
     // ------------------------------------------------------- hand plane ---

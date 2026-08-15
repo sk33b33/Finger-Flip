@@ -468,6 +468,35 @@ body {
   transform: translateY(1px);
 }
 
+/* Portrait phones: a side panel eats a third of a narrow screen, and the deck
+   is framed vertically there, so the readout belongs across the top instead. */
+@media (max-width: 560px) and (orientation: portrait) {
+  /* Keep the prompt clear of the deck, which fills the middle of the screen. */
+  .prompt {
+    top: 15%;
+  }
+  .trick-panel {
+    top: auto;
+    bottom: 84px;
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
+    width: auto;
+    transform: translateY(14px);
+    padding: 10px 14px;
+  }
+  .hud.is-trick .trick-panel {
+    transform: translateY(0);
+  }
+  .trick-panel__rows {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 16px;
+  }
+  .trick-panel__name {
+    margin-bottom: 6px;
+  }
+}
+
 /* Landscape phones: the trick panel would collide with the thumbs. */
 @media (max-height: 460px) {
   .trick-panel {

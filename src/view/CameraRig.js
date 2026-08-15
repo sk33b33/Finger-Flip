@@ -25,6 +25,12 @@ const _look = new Vector3();
 const _tmp = new Vector3();
 const _tmp2 = new Vector3();
 const _q = new Quaternion();
+const _view = new Vector3();
+const _right = new Vector3();
+const _up = new Vector3();
+const _long = new Vector3();
+const _short = new Vector3();
+const _drift = new Vector3();
 
 export default class CameraRig {
   constructor(camera) {
@@ -45,6 +51,15 @@ export default class CameraRig {
      */
     this.stanceQuat = new Quaternion();
     this.stanceYaw = 0;
+
+    // Set by fitToViewport(): which way round the trick shot frames the deck,
+    // and how far back it sits so the flick window is a usable number of pixels.
+    this.trickAzimuthOffset = 0;
+    this.fittedDistance = Config.camera.trickMinDistance;
+
+    // Board position last frame, so the trick camera can travel with it.
+    this._lastBoardPos = new Vector3();
+    this._hadBoard = false;
   }
 
   reset(skater) {
@@ -52,6 +67,8 @@ export default class CameraRig {
     this.orbit = Config.camera.trickOrbitStart;
     this.shake = 0;
     this.setStanceYaw(skater.yaw);
+    this.fitToViewport();
+    this._hadBoard = false;
     this.chaseTarget(skater, _pos, _look);
     this.position.copy(_pos);
     this.lookAt.copy(_look);
@@ -68,6 +85,73 @@ export default class CameraRig {
   beginTrick(skater) {
     this.setStanceYaw(skater.yaw);
     this.orbit = Config.camera.trickOrbitStart;
+    this.fitToViewport();
+  }
+
+  /**
+   * Choose the trick shot's orientation and distance from the viewport shape.
+   *
+   * The deck is long and thin, and the distance a finger must travel to flick
+   * off a rail is measured in real screen pixels — so a framing that works on a
+   * desktop leaves a landscape phone with a 47px flick window, which is not a
+   * control, it is a dare.
+   *
+   * Both candidate framings (deck across the screen, deck up the screen) are
+   * costed and the one needing the least distance wins, which picks landscape
+   * framing on wide viewports and portrait framing on tall ones with no aspect
+   * thresholds anywhere.
+   */
+  fitToViewport() {
+    const C = Config.camera;
+    const aspect = this.camera.aspect || 1;
+    const halfAngle = Math.tan(MathUtils.degToRad(C.trickFov) * 0.5);
+    const elevation = MathUtils.degToRad(C.trickElevationDeg);
+
+    let bestOffset = 0;
+    let bestDistance = Infinity;
+    let bestShortFloor = Infinity;
+
+    for (const offset of [0, 0.25]) {
+      const azimuth = this.stanceYaw + (C.trickAzimuthTurns + offset) * Math.PI * 2;
+
+      // View direction is fixed by azimuth and elevation, independent of range.
+      _view.set(-Math.sin(azimuth) * Math.cos(elevation), -Math.sin(elevation), -Math.cos(azimuth) * Math.cos(elevation)).normalize();
+      _right.crossVectors(_view, UP).normalize();
+      _up.crossVectors(_right, _view).normalize();
+
+      // The deck's two axes in world space, at this stance.
+      _long.set(0, 0, Config.board.length).applyQuaternion(this.stanceQuat);
+      _short.set(Config.board.width, 0, 0).applyQuaternion(this.stanceQuat);
+
+      // Range at which an axis fills `fraction` of whichever screen axis it
+      // maps onto. The larger of the two requirements is the binding one.
+      const need = (v, fraction) =>
+        Math.max(
+          Math.abs(v.dot(_up)) / (2 * fraction * halfAngle),
+          Math.abs(v.dot(_right)) / (2 * fraction * halfAngle * aspect),
+        );
+
+      // Pick the orientation on the long-axis fit ALONE. Folding the
+      // short-axis floor in here would make both candidates land on the same
+      // clamped number and the orientation signal would vanish.
+      const longFit = need(_long, C.trickFitLongAxis);
+      if (longFit < bestDistance) {
+        bestDistance = longFit;
+        bestOffset = offset;
+        bestShortFloor = need(_short, C.trickFitShortAxis);
+      }
+    }
+
+    // Then apply the flick-window floor to the winner: never further back than
+    // the range at which the deck's width stops being a usable gesture. On an
+    // extreme viewport the two constraints fight, and keeping the flick usable
+    // wins — the nose and tail are allowed to run off the edges.
+    this.trickAzimuthOffset = bestOffset;
+    this.fittedDistance = MathUtils.clamp(
+      Math.min(bestDistance, bestShortFloor),
+      C.trickMinDistance,
+      C.trickMaxDistance,
+    );
   }
 
   chaseTarget(skater, outPos, outLook) {
@@ -95,12 +179,14 @@ export default class CameraRig {
 
     // Orbit around the stance frame, not the board: the shot must not spin with
     // the trick or the player loses all sense of which way is which.
-    const azimuth = this.stanceYaw + (C.trickAzimuthTurns + this.orbit) * Math.PI * 2;
+    const azimuth =
+      this.stanceYaw +
+      (C.trickAzimuthTurns + this.trickAzimuthOffset + this.orbit) * Math.PI * 2;
     const elevation = MathUtils.degToRad(C.trickElevationDeg);
 
     // Rise and retreat through the flight so the ground enters frame in time.
     const fall = smoothstep(0.4, 1.0, flightT);
-    const dist = C.trickDistance + fall * C.landingPullback;
+    const dist = this.fittedDistance + fall * C.landingPullback;
 
     const horizontal = Math.cos(elevation) * dist;
     const vertical = Math.sin(elevation) * dist + fall * C.landingRise;
@@ -125,6 +211,19 @@ export default class CameraRig {
    */
   update(realDelta, { skater, board, flightT }) {
     const C = Config.camera;
+
+    // Ride along with the board before smoothing. The board is still travelling
+    // at speed during the trick, and lerping toward a moving target leaves it
+    // trailing off-centre — which on a phone means the deck drifts out of frame
+    // exactly when the player is trying to work it. Carrying the board's own
+    // movement across first leaves the lerp only the framing error to close.
+    if (this._hadBoard) {
+      _drift.subVectors(board.position, this._lastBoardPos);
+      this.position.addScaledVector(_drift, this.trickBlend);
+      this.lookAt.addScaledVector(_drift, this.trickBlend);
+    }
+    this._lastBoardPos.copy(board.position);
+    this._hadBoard = true;
 
     this.chaseTarget(skater, _pos, _look);
     let targetFov = C.fov;

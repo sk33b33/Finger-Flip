@@ -91,6 +91,9 @@ export default class Game {
 
     this.stage.onResize = (w, h) => {
       this.postFX.setSize(w, h, this.stage.renderer.getPixelRatio());
+      // The trick framing is fitted to the viewport, so a rotation or a resize
+      // has to re-fit or the flick window silently changes size.
+      this.cameraRig.fitToViewport();
     };
     this.postFX.setSize(this.stage.width, this.stage.height, this.stage.renderer.getPixelRatio());
 
@@ -106,6 +109,7 @@ export default class Game {
     this.charging = false;
     this.chargeAmount = 0;
     this.lastLipPrompt = -1;
+    this.taughtFingers = false;
     this.started = false;
     this.running = false;
     this.lastTrick = { name: 'Ollie' };
@@ -403,6 +407,10 @@ export default class Game {
 
     if (this.meter.canActivate) {
       this.enterNail();
+      if (!this.taughtFingers) {
+        this.taughtFingers = true;
+        this.hud.showPrompt('TWO FINGERS ON THE BOARD', 2.4);
+      }
     } else {
       this.hud.showPrompt('NO NAIL METER — RIDE IT OUT', 1.3);
       this.audio.denied();

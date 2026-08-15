@@ -125,8 +125,16 @@ export const Config = {
     followHeight: 1.05,
     followLag: 6.5, // higher = snappier
     fov: 64,
-    // Close-up used during the trick, in spherical terms around the board.
-    trickDistance: 1.5,
+    // Close-up used during the trick, in spherical terms around the board. The
+    // range is fitted to the viewport at takeoff rather than fixed, because the
+    // flick window is measured in real screen pixels: see fitToViewport().
+    trickFitLongAxis: 0.55, // fraction of the frame the deck's length fills
+    // The deck's WIDTH is the flick window, so it has a floor: below about a
+    // sixth of the frame a rail flick stops being a gesture and starts being a
+    // pixel-hunt.
+    trickFitShortAxis: 0.17,
+    trickMinDistance: 0.62,
+    trickMaxDistance: 2.1,
     // Looking down at the deck, not along it: the player has to see the surface
     // they are putting their fingers on.
     trickElevationDeg: 41,

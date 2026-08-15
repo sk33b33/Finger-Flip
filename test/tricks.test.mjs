@@ -178,7 +178,10 @@ test('config exposes every value the brief asks to be tunable', () => {
     'landing.perfectTiltDeg',
     'landing.cleanTiltDeg',
     'score.comboStep',
-    'camera.trickDistance',
+    'camera.trickMinDistance',
+    'camera.trickMaxDistance',
+    'camera.trickFitLongAxis',
+    'camera.trickFitShortAxis',
     'camera.trickFov',
   ];
   for (const path of required) {
