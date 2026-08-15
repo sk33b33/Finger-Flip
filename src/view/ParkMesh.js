@@ -9,10 +9,11 @@ import {
   InstancedMesh,
   Object3D,
   Color,
+  Vector2,
 } from 'three';
 import Config from '../core/Config.js';
 import { groundHeight, isLip, runLength } from '../sim/Park.js';
-import { concreteTexture, concreteRoughness } from './textures.js';
+import { concreteTexture, concreteRoughness, concreteNormal } from './textures.js';
 
 /**
  * Visual skatepark, tessellated straight out of the same height function the
@@ -38,6 +39,8 @@ export default class ParkMesh extends Group {
     this.material = new MeshStandardMaterial({
       map: concreteTexture(),
       roughnessMap: concreteRoughness(),
+      normalMap: concreteNormal(),
+      normalScale: new Vector2(0.32, 0.32),
       color: 0xa9adb6,
       roughness: 1.0,
       metalness: 0.0,

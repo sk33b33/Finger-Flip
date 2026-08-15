@@ -176,7 +176,7 @@ export default class Stage {
    * @param {Vector3} target what the trick lights should point at
    */
   setTrickLighting(amount, target) {
-    this.trickKey.intensity = amount * 1.75;
+    this.trickKey.intensity = amount * 1.45;
     this.trickRim.intensity = amount * 1.35;
     if (amount < 0.01) return;
 
@@ -213,6 +213,7 @@ export default class Stage {
     this.sky.position.copy(this.camera.position);
   }
 
+  /** Re-derive the drawing buffer and everything sized from it. */
   resize() {
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;

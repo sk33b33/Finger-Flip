@@ -21,15 +21,36 @@ const RUN = Config.park.runLength;
  */
 const FEATURES = [
   // A gentle warm-up kicker.
-  { type: 'kicker', z0: 34, z1: 40.5, height: 0.95, halfWidth: 5.0, curve: 2.0 },
-  // Steeper, taller: the one that gives real hangtime.
-  { type: 'kicker', z0: 62, z1: 69, height: 1.5, halfWidth: 5.5, curve: 2.4 },
+  { type: 'kicker', z0: 26, z1: 32, height: 0.9, halfWidth: 5.0, curve: 2.0 },
+
+  // A ledge to pop off the end of. Its sides are vertical, which the lip
+  // detector already reads as a launch edge.
+  { type: 'ledge', z0: 44, z1: 54, height: 0.45, halfWidth: 2.2, blend: 0.5 },
+
+  // Quarterpipe: a true concave transition, the shape the park otherwise
+  // lacks entirely. Ride up the curve and it throws you straight upward.
+  { type: 'quarter', z0: 66, radius: 3.4, height: 2.2, halfWidth: 6.5 },
+
   // A bank up onto a plateau, then a drop off the far end.
   { type: 'plateau', z0: 92, z1: 99, z2: 111.4, z3: 112.8, height: 1.55, halfWidth: 7.0 },
+
+  // Bank to bank: two facing banks with a gap of flat between them. Clear the
+  // gap or come up short.
+  { type: 'bank', z0: 124, z1: 129, height: 1.3, halfWidth: 6.0, facing: 1 },
+  { type: 'bank', z0: 135, z1: 140, height: 1.3, halfWidth: 6.0, facing: -1 },
+
   // The big one.
-  { type: 'kicker', z0: 138, z1: 146.5, height: 2.05, halfWidth: 6.0, curve: 2.6 },
-  // A rolling hip: two mirrored quarter shapes.
-  { type: 'roller', z0: 172, z1: 184, height: 1.05, halfWidth: 8.0 },
+  { type: 'kicker', z0: 152, z1: 160.5, height: 2.05, halfWidth: 6.0, curve: 2.6 },
+
+  // A hip: two kickers side by side with a saddle between them, so the natural
+  // launch is off to one side and the landing is not straight ahead. Rewards a
+  // body spin. They share a lip line — staggering them would leave a notch at
+  // the seam for a rider crossing the middle.
+  { type: 'kicker', z0: 176, z1: 183, height: 1.35, halfWidth: 4.0, curve: 2.2, offsetX: -3.4 },
+  { type: 'kicker', z0: 176, z1: 183, height: 1.35, halfWidth: 4.0, curve: 2.2, offsetX: 3.4 },
+
+  // A rolling hump to finish, ridden over rather than off.
+  { type: 'roller', z0: 196, z1: 208, height: 1.0, halfWidth: 8.0 },
 ];
 
 const _n = new Vector3();
@@ -52,8 +73,44 @@ export function groundHeight(x, z) {
 }
 
 function featureHeight(f, x, z) {
-  const lateral = lateralFalloff(x, f.halfWidth);
+  // Features can sit off the centreline, which is what lets two of them form
+  // a hip without needing a new shape.
+  const lateral = lateralFalloff(x - (f.offsetX || 0), f.halfWidth);
   if (lateral <= 0) return 0;
+
+  if (f.type === 'quarter') {
+    // A true quarterpipe: a circular transition of `radius` rising to `height`.
+    // h = R - sqrt(R^2 - t^2) is the concave curve, and the steepening normal
+    // it produces is what converts the rider's speed into height.
+    const R = f.radius;
+    const h = Math.min(f.height, R);
+    // Where the curve reaches `height`: solve R - sqrt(R^2 - t^2) = h.
+    const reach = Math.sqrt(Math.max(0, R * R - (R - h) * (R - h)));
+    if (z < f.z0 || z > f.z0 + reach) return 0;
+    const t = z - f.z0;
+    return (R - Math.sqrt(Math.max(0, R * R - t * t))) * lateral;
+  }
+
+  if (f.type === 'ledge') {
+    // A raised slab with softened ends so the run-up is rideable; the far end
+    // stays sharp, which is the bit you pop off.
+    if (z < f.z0 - f.blend || z > f.z1) return 0;
+    const rise = smoothstep(f.z0 - f.blend, f.z0, z);
+    return f.height * rise * lateral;
+  }
+
+  if (f.type === 'bank') {
+    // A flat-faced bank. `facing` +1 rises along +Z and is what you launch off;
+    // -1 falls along +Z and is what you land on. A landing bank needs a short
+    // steep lead-in rather than a bare vertical step, or a rider who comes up
+    // short teleports to the top of the wall instead of hitting it.
+    const lead = f.facing > 0 ? 0 : (f.lead ?? 1.4);
+    if (z < f.z0 - lead || z > f.z1) return 0;
+    if (z < f.z0) return f.height * smoothstep(f.z0 - lead, f.z0, z) * lateral;
+    const t = (z - f.z0) / (f.z1 - f.z0);
+    const shaped = f.facing > 0 ? smoothstep(0, 1, t) : smoothstep(0, 1, 1 - t);
+    return f.height * shaped * lateral;
+  }
 
   if (f.type === 'kicker') {
     if (z < f.z0 || z > f.z1) return 0;

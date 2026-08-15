@@ -186,10 +186,10 @@ export default class CameraRig {
 
     // Rise and retreat through the flight so the ground enters frame in time.
     const fall = smoothstep(0.4, 1.0, flightT);
-    const dist = this.fittedDistance + fall * C.landingPullback;
+    const dist = this.fittedDistance * (1 + fall * C.landingPullback);
 
     const horizontal = Math.cos(elevation) * dist;
-    const vertical = Math.sin(elevation) * dist + fall * C.landingRise;
+    const vertical = Math.sin(elevation) * dist + fall * C.landingRise * this.fittedDistance;
 
     outPos.set(
       board.position.x + Math.sin(azimuth) * horizontal,

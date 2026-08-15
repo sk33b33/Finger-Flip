@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   BufferAttribute,
   MeshStandardMaterial,
+  MeshPhysicalMaterial,
   CylinderGeometry,
   BoxGeometry,
   Vector3,
@@ -60,12 +61,15 @@ export default class BoardMesh extends Group {
         roughness: 0.94,
         metalness: 0.0,
       }),
-      graphic: new MeshStandardMaterial({
+      // A printed, lacquered underside. The clearcoat is the layer that sells
+      // the flip: it catches the sky as a moving highlight across the graphic
+      // while the deck rotates, which a plain roughness value cannot do.
+      graphic: new MeshPhysicalMaterial({
         map: graphic,
-        roughness: 0.34,
-        metalness: 0.02,
-        // A printed, lacquered underside: low roughness so the sky streaks
-        // across it as the board flips.
+        roughness: 0.42,
+        metalness: 0.0,
+        clearcoat: 0.85,
+        clearcoatRoughness: 0.12,
       }),
       ply: new MeshStandardMaterial({
         map: ply,
@@ -87,8 +91,8 @@ export default class BoardMesh extends Group {
       urethane: new MeshStandardMaterial({
         // Off-white, not white: at full key light a pure white wheel clips and
         // the bloom turns it into a flare.
-        color: 0xd8d2c4,
-        roughness: 0.55,
+        color: 0xb9b3a6,
+        roughness: 0.64,
         metalness: 0.0,
       }),
       bushing: new MeshStandardMaterial({ color: 0xffb43a, roughness: 0.6, metalness: 0 }),

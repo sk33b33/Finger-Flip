@@ -13,7 +13,7 @@ import FingerFlipController from '../src/sim/Fingers.js';
 import { recognise } from '../src/sim/Tricks.js';
 import { evaluateLanding, Quality } from '../src/sim/Landing.js';
 import Config from '../src/core/Config.js';
-import { groundHeight, groundNormal, isLip } from '../src/sim/Park.js';
+import { groundHeight, groundNormal, groundSlopeZ, isLip } from '../src/sim/Park.js';
 
 const STANCE = new Quaternion(); // identity: board travelling down +Z, level
 const REAL_DT = 1 / 60;
@@ -180,26 +180,74 @@ test('trick recogniser names combined rotations', () => {
   assert.match(recognise({ x: 0, y: -2, z: -4 }).name, /Quad Kickflip/);
 });
 
-test('park geometry is continuous and has launchable lips', () => {
-  // Ramp faces must be smooth so the surface normal never jumps mid-landing.
-  // Lips are allowed to be cliffs: that is what launches the rider.
-  let maxJump = 0;
-  for (let z = 0; z < 220; z += 0.05) {
-    const a = groundHeight(0, z);
-    const b = groundHeight(0, z + 0.05);
-    const step = Math.abs(b - a);
-    if (b < a && isLip(0, z)) continue; // an intentional lip
-    maxJump = Math.max(maxJump, step);
+test('the park never drops away under a rider without being a lip', () => {
+  // The property that matters: the ground may rise as steeply as it likes —
+  // that is a transition or a wall, and the rider decelerates against it — but
+  // it must never fall away from under them except at a lip, which is exactly
+  // what launches them. A surprise drop is a landing the player cannot read.
+  let worst = 0;
+  let worstAt = 0;
+  for (const x of [-3.4, 0, 3.4]) {
+    for (let z = 0; z < 220; z += 0.05) {
+      const a = groundHeight(x, z);
+      const b = groundHeight(x, z + 0.05);
+      if (b >= a) continue; // rising ground is fine
+      if (isLip(x, z)) continue; // an intentional launch edge
+      if (a - b > worst) {
+        worst = a - b;
+        worstAt = z;
+      }
+    }
   }
-  assert.ok(maxJump < 0.06, `ramp face has a ${maxJump.toFixed(3)}m step per 5cm`);
-  assert.ok(groundHeight(0, 0) === 0 && groundHeight(0, 219.9) === 0, 'run must loop seamlessly');
+  assert.ok(worst < 0.06, `surprise drop of ${worst.toFixed(3)}m at z=${worstAt.toFixed(2)}`);
+});
 
-  let lips = 0;
-  for (let z = 0; z < 220; z += 0.5) if (isLip(0, z)) lips++;
-  assert.ok(lips > 4, `expected several launch lips, found ${lips}`);
+test('the run loops seamlessly', () => {
+  assert.equal(groundHeight(0, 0), 0);
+  assert.equal(groundHeight(0, 219.9), 0);
+  assert.equal(groundHeight(0, 0), groundHeight(0, 220));
+});
 
-  const n = groundNormal(0, 68, new Vector3());
-  assert.ok(n.z < -0.2, 'the kicker face should tilt its normal backwards');
+test('the park has launchable lips spread through the run', () => {
+  const lips = [];
+  for (let z = 0; z < 220; z += 0.25) {
+    if (isLip(0, z, 0.5) && !isLip(0, z + 0.25, 0.5)) lips.push(z);
+  }
+  assert.ok(lips.length >= 5, `expected several launch lips, found ${lips.length}`);
+  // Spread out, not bunched: the rider needs run-up between features.
+  for (let i = 1; i < lips.length; i++) {
+    assert.ok(lips[i] - lips[i - 1] > 8, `lips at ${lips[i - 1]} and ${lips[i]} are too close`);
+  }
+});
+
+test('a kicker face tilts its normal back at the rider', () => {
+  const n = groundNormal(0, 31, new Vector3());
+  assert.ok(n.z < -0.2, `kicker normal ${n.z.toFixed(2)} should lean backwards`);
+});
+
+test('the quarterpipe steepens toward its lip', () => {
+  // A transition is defined by its curve: shallow at the bottom, near vertical
+  // at the top. A constant slope would just be a bank.
+  const low = groundSlopeZ(0, 67);
+  const high = groundSlopeZ(0, 69);
+  assert.ok(low > 0.1, `the base should already rise, got ${low.toFixed(2)}`);
+  assert.ok(high > low * 2, `the lip should be far steeper: ${low.toFixed(2)} -> ${high.toFixed(2)}`);
+});
+
+test('the landing bank of the gap slopes away from the rider', () => {
+  // You land on it and ride down; if its normal pointed back at you it would
+  // be a wall, and every gap attempt would be a slam.
+  const n = groundNormal(0, 138, new Vector3());
+  assert.ok(n.z > 0.2, `landing bank normal ${n.z.toFixed(2)} should lean away`);
+});
+
+test('the hip has two peaks with a saddle between them', () => {
+  const left = groundHeight(-3.4, 182);
+  const middle = groundHeight(0, 182);
+  const right = groundHeight(3.4, 182);
+  assert.ok(left > middle + 0.3, `left peak ${left.toFixed(2)} vs saddle ${middle.toFixed(2)}`);
+  assert.ok(right > middle + 0.3, `right peak ${right.toFixed(2)} vs saddle ${middle.toFixed(2)}`);
+  assert.ok(Math.abs(left - right) < 0.01, 'the hip should be symmetric');
 });
 
 function fmt(v) {

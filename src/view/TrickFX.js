@@ -40,6 +40,9 @@ const BAD = new Color(0xff4d3a);
 // same spot the keyboard fingers rest at.
 const HOME_HINT = 0.22;
 
+// Above this height the contact shadow has spread out to nothing useful.
+const SHADOW_FADE_HEIGHT = 3.2;
+
 const _v = new Vector3();
 const _n = new Vector3();
 const _q = new Quaternion();
@@ -143,6 +146,27 @@ export default class TrickFX extends Group {
     this.planeRing.renderOrder = 4;
     this.planeCarrier.add(this.planeRing);
     this.add(this.planeCarrier);
+
+    // ---------------------------------------------------- contact shadow ---
+    // The sun's shadow map is coarse at trick range, and height above the
+    // ground is the one thing the close-up shot cannot show directly. A blob
+    // that tightens and darkens as the board falls reads as height at a glance
+    // — a gameplay cue at least as much as a visual one.
+    this.shadowCarrier = new Group();
+    this.contactShadow = new Mesh(
+      new CircleGeometry(0.5, 32),
+      new MeshBasicMaterial({
+        color: 0x0a0d14,
+        alphaMap: radialSprite(128),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      }),
+    );
+    this.contactShadow.rotation.x = -Math.PI / 2;
+    this.contactShadow.renderOrder = 2;
+    this.shadowCarrier.add(this.contactShadow);
+    this.add(this.shadowCarrier);
 
     // ---------------------------------------------------------- reticle ---
     this.reticle = new Group();
@@ -255,6 +279,27 @@ export default class TrickFX extends Group {
       const scale = 1 + 0.35 * c;
       t.ring.scale.setScalar(scale);
       t.halo.scale.setScalar(0.7 + 0.9 * c);
+    }
+
+    // ---------------------------------------------------- contact shadow ---
+    // Driven by height above the surface directly under the board, so it is
+    // legible on a ramp face as well as on the flat.
+    const shadowOn = airborne || board.position.y > 0.001;
+    this.shadowCarrier.visible = shadowOn;
+    if (shadowOn) {
+      const surface = groundHeight(board.position.x, board.position.z);
+      const height = Math.max(0, board.position.y - surface);
+      const t = MathUtils.clamp(height / SHADOW_FADE_HEIGHT, 0, 1);
+
+      this.shadowCarrier.position.set(board.position.x, surface + 0.012, board.position.z);
+      groundNormal(board.position.x, board.position.z, _n);
+      _q.setFromUnitVectors(UP, _n);
+      this.shadowCarrier.quaternion.copy(_q);
+
+      // Close to the ground: small, dark and tight. High up: wide and faint.
+      const spread = MathUtils.lerp(0.62, 2.1, t);
+      this.shadowCarrier.scale.set(spread, 1, spread);
+      this.contactShadow.material.opacity = MathUtils.lerp(0.62, 0.06, t);
     }
 
     // ------------------------------------------------------ finger homes ---

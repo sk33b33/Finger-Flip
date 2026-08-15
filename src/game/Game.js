@@ -18,6 +18,7 @@ import FingerMapper from './FingerMapper.js';
 
 import Stage from '../view/Stage.js';
 import PostFX from '../view/PostFX.js';
+import QualityManager from '../view/Quality.js';
 import BoardMesh from '../view/BoardMesh.js';
 import RiderMesh from '../view/RiderMesh.js';
 import ParkMesh from '../view/ParkMesh.js';
@@ -77,6 +78,7 @@ export default class Game {
 
     // --- presentation -----------------------------------------------------
     this.postFX = new PostFX(this.stage.renderer);
+    this.quality = new QualityManager(this.stage, this.postFX);
     this.boardMesh = new BoardMesh();
     this.riderMesh = new RiderMesh();
     this.parkMesh = new ParkMesh();
@@ -197,8 +199,11 @@ export default class Game {
       this.hud.showPrompt(muted ? 'MUTED' : 'SOUND ON', 1.0);
     }
     if (i.pressed('KeyP')) {
-      this.postFX.enabled = !this.postFX.enabled;
-      this.hud.showPrompt(this.postFX.enabled ? 'EFFECTS ON' : 'EFFECTS OFF', 1.0);
+      // Cycle the quality tier by hand, which also pins it: someone who has
+      // chosen a setting does not want it quietly moved back.
+      this.quality.enabled = false;
+      this.quality.setTier((this.quality.tier + 1) % QualityManager.tierCount);
+      this.hud.showPrompt(`QUALITY: ${this.quality.label.toUpperCase()}`, 1.2);
     }
     // Any touch or key counts as the gesture that unlocks audio.
     if (!this.started && (i.touchCount > 0 || i.keysPressed.size > 0)) {
@@ -719,6 +724,10 @@ export default class Game {
 
     // --- Render ------------------------------------------------------------
     this.postFX.render(this.stage.scene, this.stage.camera);
+
+    // Measured after the frame is submitted, so it reflects what drawing it
+    // actually cost rather than what the last one did.
+    this.quality.update(rd);
   }
 
   /** Nudge the player to charge a pop as a lip comes up. */

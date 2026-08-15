@@ -149,9 +149,11 @@ export const Config = {
     // Turns per real second: a whole revolution would take half a minute.
     trickOrbitRate: 0.03,
     trickOrbitStart: 0,
-    // Landing area must stay on screen: the camera pulls back as the board falls.
-    landingPullback: 1.6,
-    landingRise: 0.45,
+    // Landing area must stay on screen: the camera pulls back as the board
+    // falls. Proportional to the fitted range, not a fixed distance, or the
+    // pullback dwarfs the shot on a viewport that framed in close.
+    landingPullback: 0.85, // multiple of the fitted range
+    landingRise: 0.35,
   },
 
   landing: {
@@ -209,6 +211,14 @@ export const Config = {
     chromaSlowmo: 0.0019,
     radialBlurSlowmo: 0.44,
     maxPixelRatio: 2,
+    // Adaptive quality. The renderer gives ground rather than dropping frames:
+    // see view/Quality.js for the order it gives it up in.
+    adaptive: {
+      budgetSeconds: 1 / 45, // slower than this and we are losing frames
+      comfortableSeconds: 1 / 58, // faster than this and there is headroom
+      dropAfterSeconds: 1.1, // sustained overrun before stepping down
+      raiseAfterSeconds: 6.0, // far longer before stepping back up
+    },
   },
 };
 

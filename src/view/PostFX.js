@@ -10,6 +10,7 @@ import {
   PlaneGeometry,
   Vector2,
   NoBlending,
+  DataTexture,
 } from 'three';
 import Config from '../core/Config.js';
 
@@ -106,8 +107,8 @@ const COMPOSITE_FRAG = /* glsl */ `
     if (radial > 0.001) {
       vec3 acc = vec3(0.0);
       float total = 0.0;
-      for (int i = 0; i < 6; i++) {
-        float t = float(i) / 5.0;
+      for (int i = 0; i < RADIAL_TAPS; i++) {
+        float t = float(i) / float(RADIAL_TAPS - 1);
         // Strength grows with distance from the focus, so the board stays sharp
         // and the world smears past it.
         float scale = 1.0 - radial * 0.06 * t * dist * 2.2;
@@ -221,9 +222,12 @@ export default class PostFX {
       uniforms: { tDiffuse: { value: null }, uDir: { value: new Vector2() } },
     });
 
+    this.radialTaps = 6;
+    this.bloomEnabled = true;
     this.compositeMat = new ShaderMaterial({
       vertexShader: QUAD_VERT,
       fragmentShader: COMPOSITE_FRAG,
+      defines: { RADIAL_TAPS: 6 },
       blending: NoBlending,
       depthTest: false,
       depthWrite: false,
@@ -245,6 +249,11 @@ export default class PostFX {
     });
 
     this.quad = new Quad(this.compositeMat);
+
+    // A 1x1 black texture to stand in for the bloom buffers when bloom is off,
+    // so the composite shader needs no branch and no second variant.
+    this.black = new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+    this.black.needsUpdate = true;
   }
 
   setSize(w, h, pixelRatio) {
@@ -254,6 +263,18 @@ export default class PostFX {
     for (const rt of this.bloomA) rt.setSize(Math.max(1, W >> 1), Math.max(1, H >> 1));
     for (const rt of this.bloomB) rt.setSize(Math.max(1, W >> 2), Math.max(1, H >> 2));
     this.compositeMat.uniforms.uResolution.value.set(W, H);
+  }
+
+  /**
+   * Change how many taps the radial blur takes. Recompiles the composite, so it
+   * is only called when the quality tier actually moves.
+   */
+  setRadialTaps(taps) {
+    const n = Math.max(2, Math.round(taps));
+    if (n === this.radialTaps) return;
+    this.radialTaps = n;
+    this.compositeMat.defines.RADIAL_TAPS = n;
+    this.compositeMat.needsUpdate = true;
   }
 
   /**
@@ -283,6 +304,16 @@ export default class PostFX {
     r.setRenderTarget(this.sceneTarget);
     r.clear();
     r.render(scene, camera);
+
+    if (!this.bloomEnabled) {
+      this.quad.material = this.compositeMat;
+      const u0 = this.compositeMat.uniforms;
+      u0.tDiffuse.value = this.sceneTarget.texture;
+      u0.tBloomA.value = this.black;
+      u0.tBloomB.value = this.black;
+      this.quad.render(r, null);
+      return;
+    }
 
     // Bright pass into the half-res chain.
     this.quad.material = this.brightMat;

@@ -119,8 +119,19 @@ never becomes dead time. Set `Config.nail.idleTimeScale` equal to
   at 30fps as at 144 — also tested.
 - **The park is one height function.** Collision, surface normals, camera
   clearance and the visual mesh all come from `sim/Park.js`, so what you see is
-  exactly what you land on. Three copies of the tile cycle around the rider for
-  an endless run.
+  exactly what you land on — kickers, a quarterpipe transition, a ledge, a
+  plateau with a drop, a bank-to-bank gap, a hip and a roller, all expressed as
+  `h(x, z)`. Three copies of the tile cycle around the rider for an endless run.
+  The constraint is real: anything that cannot be written as a height cannot
+  exist, which is why there are no grind rails.
+- **The trick shot fits itself to the viewport.** The distance a finger travels
+  to flick off a rail is measured in screen pixels, so the camera costs both
+  candidate framings against the frame and picks the cheaper, and the deck's
+  width sets a floor on the range. `tools/aspects.mjs` measures it.
+- **Adaptive quality.** The slow-motion composite is the most expensive thing
+  drawn and it switches on exactly when a steady frame rate matters most, so
+  the renderer gives ground in a fixed order rather than dropping frames:
+  pixel ratio, then radial blur taps, then bloom. `P` cycles it by hand.
 - **Post-processing** is a small hand-rolled composer: MSAA HDR target, two-level
   bloom, then a single composite doing radial motion blur, chromatic aberration,
   a slow-motion grade, vignette and grain — all keyed off one `slowmo` uniform
