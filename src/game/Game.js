@@ -3,12 +3,14 @@ import { Vector3, Quaternion, MathUtils } from 'three';
 import Config from '../core/Config.js';
 import GameTime from '../core/GameTime.js';
 import Input from '../core/Input.js';
+import Haptics from '../core/Haptics.js';
 
 import Board from '../sim/Board.js';
 import Skater from '../sim/Skater.js';
 import FingerFlipController from '../sim/Fingers.js';
-import { recognise, describeSpin } from '../sim/Tricks.js';
+import { recognise, describeSpin, fullName, quantiseBodySpin } from '../sim/Tricks.js';
 import { evaluateLanding, previewLanding, Quality } from '../sim/Landing.js';
+import GrabTracker from '../sim/Grabs.js';
 import { groundHeight, groundNormal, isLip } from '../sim/Park.js';
 
 import ScoreSystem, { NailMeter } from './Score.js';
@@ -62,11 +64,13 @@ export default class Game {
     this.stage = new Stage(container);
     this.input = new Input(this.stage.renderer.domElement);
     this.audio = new AudioEngine();
+    this.haptics = new Haptics();
 
     // --- simulation -------------------------------------------------------
     this.skater = new Skater();
     this.board = new Board();
     this.fingers = new FingerFlipController();
+    this.grabs = new GrabTracker();
     this.mapper = new FingerMapper(this.input, this.fingers);
     this.score = new ScoreSystem();
     this.meter = new NailMeter();
@@ -134,6 +138,7 @@ export default class Game {
     this.board.snapshot();
     this.skater.snapshot();
     this.fingers.reset();
+    this.grabs.reset();
     this.mapper.reset();
     this.score.reset();
     this.meter.reset();
@@ -271,9 +276,25 @@ export default class Game {
         b.lastReleaseSpeed > a.lastReleaseSpeed ? b : a,
       );
       this.audio.flick(Math.min(1, 0.4 + f.lastReleaseSpeed * 0.18));
+      this.haptics.fire('flick');
     }
     if (this.fingers.caught && !caughtBefore) {
       this.audio.catchSound(this.fingers.catchStrength);
+      this.haptics.fire('catch');
+    }
+
+    const wasGrabbing = this.grabs.isGrabbing;
+    this.grabs.update(this.fingers, rd);
+    if (this.grabs.isGrabbing && !wasGrabbing) {
+      this.audio.grab();
+      this.haptics.fire('grab');
+    }
+
+    // A grabbed board is held against the feet, so it stops drifting away.
+    if (this.grabs.isGrabbing) {
+      const hold = Math.max(0, 1 - Config.grabs.driftDamping * rd);
+      this.board.velocity.x = MathUtils.lerp(this.skater.velocity.x, this.board.velocity.x, hold);
+      this.board.velocity.z = MathUtils.lerp(this.skater.velocity.z, this.board.velocity.z, hold);
     }
   }
 
@@ -344,7 +365,8 @@ export default class Game {
     this.charging = false;
     this.chargeAmount = 0;
 
-    this.skater.takeOff(MathUtils.clamp(charge, 0, 1));
+    // Whatever the player is steering at this instant becomes body spin.
+    this.skater.takeOff(MathUtils.clamp(charge, 0, 1), this.controls.steer);
 
     // Hand the board over to the fingers, level in the stance frame. Leaving it
     // at the ramp's angle would start every kicker trick with the deck out of
@@ -365,6 +387,7 @@ export default class Game {
     this.board.angularVelocity.set(Config.pop.pitchKick, 0, 0);
 
     this.fingers.reset();
+    this.grabs.reset();
     this.mapper.reset();
     this.mapper.homeKeyFingers();
     this.cameraRig.beginTrick(this.skater);
@@ -375,6 +398,7 @@ export default class Game {
     this.rollTimer = 0;
 
     this.audio.pop(0.5 + charge * 0.6);
+    this.haptics.fire('pop');
     this.cameraRig.addShake(0.1 + charge * 0.16);
 
     if (this.meter.canActivate) {
@@ -382,6 +406,7 @@ export default class Game {
     } else {
       this.hud.showPrompt('NO NAIL METER — RIDE IT OUT', 1.3);
       this.audio.denied();
+      this.haptics.fire('denied');
     }
   }
 
@@ -415,7 +440,10 @@ export default class Game {
 
     const landing = evaluateLanding(this.board, _n, _travel, s.position);
     const trick = recognise(this.board.spin);
-    this.lastTrick = trick;
+    const grab = this.grabs.score();
+    const bodyTurns = quantiseBodySpin(s.airYaw);
+    const name = fullName(trick, grab.name, bodyTurns);
+    this.lastTrick = { ...trick, name };
 
     const hands = {
       flicks: this.fingers.totalFlicks,
@@ -432,10 +460,10 @@ export default class Game {
     this.exitNail();
     this.flash = landing.quality === Quality.BAIL ? 0.28 : 0.14 + landing.score * 0.2;
 
-    const result = this.score.award(trick, landing, flight, hands);
+    const result = this.score.award(trick, landing, flight, hands, { grab, bodyTurns, name });
 
     if (landing.quality === Quality.BAIL) {
-      this.bail(trick, landing);
+      this.bail({ ...trick, name }, landing);
       return;
     }
 
@@ -449,11 +477,12 @@ export default class Game {
     s.speed *= 0.72 + 0.28 * landing.score;
 
     this.audio.land(landing.score);
+    this.haptics.fire(landing.quality === Quality.PERFECT ? 'perfect' : 'land');
     this.cameraRig.addShake(0.16 + (1 - landing.score) * 0.4);
     this.trickFX.burst(s.position, 0.3 + landing.score * 0.7, landing.score > 0.7 ? 0xa8ffe0 : 0xffd9a0);
 
     this.hud.showResult({
-      trick: trick.name,
+      trick: name,
       quality: landing.quality,
       points: result.points,
       note: buildNote(result, landing),
@@ -486,6 +515,7 @@ export default class Game {
     this.board.airborne = true;
 
     this.audio.bail();
+    this.haptics.fire('bail');
     this.cameraRig.addShake(0.75);
     this.trickFX.burst(s.position, 1, 0xff8a5a);
 
@@ -654,7 +684,12 @@ export default class Game {
     this.audio.setSlowmo(slowmo);
 
     // --- HUD ---------------------------------------------------------------
-    const liveTrick = this.state === State.AIR ? recognise(this.board.spin) : this.lastTrick;
+    let liveTrick = this.lastTrick;
+    if (this.state === State.AIR) {
+      const t = recognise(this.board.spin);
+      const held = this.grabs.isGrabbing ? this.grabs.liveName : null;
+      liveTrick = { ...t, name: fullName(t, held, quantiseBodySpin(this.skater.airYaw)) };
+    }
     this.hud.update({
       realDelta: rd,
       score: this.score.total,
@@ -666,6 +701,9 @@ export default class Game {
       trickActive: this.state === State.AIR,
       trickName: liveTrick.name,
       spin: describeSpin(this.board.spin),
+      bodySpin: this.state === State.AIR ? this.skater.airYaw : 0,
+      grab: this.state === State.AIR && this.grabs.isGrabbing ? this.grabs.liveName : null,
+      grabHold: this.grabs.currentHold,
       landingQuality,
     });
 
@@ -709,6 +747,7 @@ function estimateAirTime(skater) {
 
 function buildNote(result, landing) {
   const bits = [];
+  if (result.grab && result.grabHold > 0.6) bits.push(`${result.grabHold.toFixed(1)}s grab`);
   if (result.repeated) bits.push('repeat — half score');
   if (result.lateCatch) bits.push('late catch');
   else if (result.caught) bits.push('caught');

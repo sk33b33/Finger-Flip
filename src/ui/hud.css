@@ -201,6 +201,13 @@ body {
   font-size: 13px;
   font-weight: 600;
 }
+.row--hidden {
+  display: none;
+}
+.row--grab .row__k,
+.row--grab .row__v {
+  color: var(--good);
+}
 
 .quality {
   margin-top: 12px;

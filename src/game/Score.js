@@ -33,14 +33,18 @@ export default class ScoreSystem {
    * @param {object} landing result from evaluateLanding()
    * @param {object} flight  { airTime, peakHeight, takeoffSpeed }
    * @param {object} hands   { flicks, caught, catchStrength, catchAt }
+   * @param {object} extras  { grab, bodyTurns, name }
    */
-  award(trick, landing, flight, hands) {
+  award(trick, landing, flight, hands, extras = {}) {
     const S = Config.score;
+    const grab = extras.grab || { name: null, points: 0, difficulty: 1, hold: 0 };
+    const bodyTurns = extras.bodyTurns || 0;
 
     const rotationPoints =
       Math.abs(trick.yaw) * S.rotationPer360 +
       Math.abs(trick.roll) * S.flipPer360 +
-      Math.abs(trick.pitch) * S.pitchPer360;
+      Math.abs(trick.pitch) * S.pitchPer360 +
+      Math.abs(bodyTurns) * S.bodySpinPer360;
 
     const airPoints =
       flight.airTime * S.airTimeBonusPerSecond +
@@ -59,23 +63,27 @@ export default class ScoreSystem {
       stylePoints += S.styleSmoothness / hands.flicks;
     }
 
-    const base = trick.base + rotationPoints + airPoints + stylePoints;
+    const base = trick.base + rotationPoints + airPoints + stylePoints + grab.points;
 
     // How close the rotation landed to a named, whole trick.
     const styleMultiplier = 0.8 + 0.4 * Math.max(0, 1 - trick.error * 1.6);
     const landingMultiplier =
       S.landingMultiplier[landing.quality] * (0.75 + 0.25 * landing.score);
 
-    const raw = base * trick.difficulty * styleMultiplier * landingMultiplier;
+    const raw = base * trick.difficulty * grab.difficulty * styleMultiplier * landingMultiplier;
 
-    const repeated = trick.name === this.lastTrickName && trick.name !== 'Ollie';
+    const displayName = extras.name || trick.name;
+    const repeated = displayName === this.lastTrickName && displayName !== 'Ollie';
     const repeatFactor = repeated ? S.repeatPenalty : 1;
 
     const points = Math.round(raw * repeatFactor);
 
     const bailed = landing.quality === Quality.BAIL;
     const breakdown = {
-      trick: trick.name,
+      trick: displayName,
+      grab: grab.name,
+      grabHold: grab.hold,
+      bodyTurns,
       quality: landing.quality,
       points,
       base: Math.round(base),
@@ -105,7 +113,7 @@ export default class ScoreSystem {
       Config.score.comboMax,
       1 + this.comboLength * Config.score.comboStep,
     );
-    this.lastTrickName = trick.name;
+    this.lastTrickName = displayName;
 
     breakdown.pending = this.comboPending;
     breakdown.banked = 0;

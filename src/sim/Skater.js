@@ -28,6 +28,9 @@ export default class Skater {
     this.takeoffY = 0;
     this.groundNormal = new Vector3(0, 1, 0);
     this.lean = 0;
+    /** Rider rotation carried into the air, rad/s and accumulated turns. */
+    this.spinRate = 0;
+    this.airYaw = 0;
   }
 
   reset(z = 4) {
@@ -43,6 +46,8 @@ export default class Skater {
     this.airTime = 0;
     this.peakHeight = 0;
     this.lean = 0;
+    this.spinRate = 0;
+    this.airYaw = 0;
     this.groundNormal.set(0, 1, 0);
   }
 
@@ -109,6 +114,10 @@ export default class Skater {
   }
 
   stepAir(dt) {
+    if (this.spinRate !== 0) {
+      this.yaw += this.spinRate * dt;
+      this.airYaw += (this.spinRate * dt) / (Math.PI * 2);
+    }
     this.velocity.y += Config.sim.gravity * dt;
     const drag = Math.max(0, 1 - Config.sim.airDrag * dt);
     this.velocity.x *= drag;
@@ -121,10 +130,11 @@ export default class Skater {
   }
 
   /**
-   * Leave the ground. `charge` is 0..1 of the pop meter; a ramp lip adds its own
-   * launch even at zero charge.
+   * Leave the ground. A ramp lip adds its own launch even at zero charge.
+   * @param {number} charge 0..1 of the pop meter
+   * @param {number} steer  the steer input at the instant of the pop, -1..1
    */
-  takeOff(charge) {
+  takeOff(charge, steer = 0) {
     const P = Config.pop;
     const up = P.minUp + (P.maxUp - P.minUp) * clamp01(charge);
     const fwd = this.heading(_h);
@@ -140,7 +150,13 @@ export default class Skater {
     this.takeoffSpeed = this.speed;
     this.takeoffY = this.position.y;
     this.popCharge = 0;
-    return { up: this.velocity.y, charge };
+
+    // Only a committed carve becomes a spin, so straight pops stay straight.
+    const wind = Math.abs(steer) > P.bodySpinDeadzone ? steer : 0;
+    this.spinRate = wind * P.bodySpinRate;
+    this.airYaw = 0;
+
+    return { up: this.velocity.y, charge, spin: this.spinRate };
   }
 
   /** True if the rider has fallen to or below the park surface. */
@@ -155,8 +171,13 @@ export default class Skater {
     groundNormal(this.position.x, this.position.z, this.groundNormal);
     this.airborne = false;
     this.speed = Math.hypot(this.velocity.x, this.velocity.z);
+    // The rider rolls away in the direction they are travelling, not wherever
+    // the spin happened to stop, but a half-turn of body spin flips the stance.
     this.yaw = Math.atan2(this.velocity.x, this.velocity.z);
+    const halfTurns = Math.round(this.airYaw * 2);
+    if (halfTurns % 2 !== 0) this.fakie = !this.fakie;
     if (fakie) this.fakie = !this.fakie;
+    this.spinRate = 0;
     this.velocity.y = 0;
   }
 

@@ -138,6 +138,32 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
+/**
+ * The full call for a trick: board rotation, then grab, then body spin, in the
+ * order a skater would say it. "Kickflip Indy 360".
+ *
+ * @param {{name:string}} trick   result from recognise()
+ * @param {string|null}   grab    a grab name, or null
+ * @param {number}        bodyTurns rider rotation in turns, signed
+ */
+export function fullName(trick, grab, bodyTurns = 0) {
+  const parts = [];
+
+  // An ollie with a grab is just the grab: nobody calls it an "Ollie Indy".
+  if (trick.name !== 'Ollie' || !grab) parts.push(trick.name);
+  if (grab) parts.push(grab);
+
+  const halves = Math.round(Math.abs(bodyTurns) * 2);
+  if (halves > 0) parts.push(`${halves * 180}`);
+
+  return parts.join(' ');
+}
+
+/** Body spin quantised the way it is scored and named. */
+export function quantiseBodySpin(turns) {
+  return Math.round(turns * 2) / 2;
+}
+
 /** Human-readable rotation readout for the HUD during the trick. */
 export function describeSpin(spin) {
   const deg = (t) => Math.round(t * 360);

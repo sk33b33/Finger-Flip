@@ -178,6 +178,13 @@ export default class AudioEngine {
     this.noiseBurst({ duration: 0.07, type: 'lowpass', freq: 1600, gain: 0.2 * power, decay: 0.04 });
   }
 
+  /** A hand closing on the rail: a short, damped thump. */
+  grab() {
+    if (!this.ready || this.muted) return;
+    this.tone(130, 0.16, 0.16, 'sine', 0.006);
+    this.noiseBurst({ duration: 0.1, type: 'lowpass', freq: 900, gain: 0.14, decay: 0.06 });
+  }
+
   /** Wheels hitting the ground. `quality` 0..1 makes a good landing crisper. */
   land(quality) {
     if (!this.ready || this.muted) return;

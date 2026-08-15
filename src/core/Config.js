@@ -45,6 +45,11 @@ export const Config = {
     // Automatic pitch the board picks up off the pop (nose rises first).
     pitchKick: -0.35,
     forwardBoost: 1.1,
+    // Body spin. Whatever you are steering at the instant you pop is carried
+    // into the air as rider rotation, the same way a skater winds up before an
+    // ollie. It is deliberately not a finger control: the fingers have a job.
+    bodySpinRate: 5.6, // rad/s at full lock
+    bodySpinDeadzone: 0.22,
   },
 
   fingers: {
@@ -74,6 +79,22 @@ export const Config = {
     // With no key held a virtual finger drifts back to its home spot on the
     // deck (not touching), so the next tap is another clean flick.
     keyboardReturn: 2.2,
+  },
+
+  grabs: {
+    // A hold only counts as a grab once it has lasted this long in real time.
+    // Shorter than this and it is a catch, not a grab.
+    minHold: 0.3,
+    minContact: 0.45,
+    // Zone boundaries in board-local metres.
+    railZone: 0.052, // beyond this from the centreline you are on a rail
+    tipZone: 0.3, // beyond this from centre you are on the nose or tail
+    frontTruckZ: 0.06, // splits the toe rail into mute (forward) and indy
+    // Scoring.
+    pointsPerSecondHeld: 190,
+    maxScoringHold: 3.2,
+    // A grabbed board is held against the feet, so it stops drifting away.
+    driftDamping: 5.5,
   },
 
   nail: {

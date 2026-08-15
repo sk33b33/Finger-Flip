@@ -37,11 +37,24 @@ presses:
 | Slow, deliberate drag out to a **tip** | Impossible |
 | Two flicks in one flight | Doubles |
 | **Plant** a finger back on the spinning deck | Catch — stops the rotation dead |
+| **Hold** that plant on a rail or a tip | Grab — Indy, Melon, Mute, Nosegrab, Tailgrab, Stalefish |
+| **Carve** as you pop | Body spin — 180, 360 |
 
 The catch is the skill. A flick starts the board spinning; it keeps spinning
 until something stops it. Put a finger back on the deck as it comes round flat
 and you keep exactly the rotation you had at that moment. Catch late and you
 score more.
+
+A **grab is not a separate control** — it is that same catch, held on. Keep hold
+of a rail or a tip past a third of a second and it earns a name, and the longer
+you hold it the more it pays. Which means the order matters exactly as it does
+on a real board: flick, let it come round, *then* grab. Grab too early and you
+smother the flip.
+
+**Body spin** comes from the carve you are already doing. Whatever you are
+steering at the instant you pop is carried into the air as rider rotation, so a
+committed turn into a kicker gives you a 180 and a hard one gives you a 360.
+The fingers never have to leave the deck to do it.
 
 Press `Space` (or the **LAND IT** button) to drop out of slow motion and take
 the landing whenever you are ready.
@@ -119,8 +132,8 @@ never becomes dead time. Set `Config.nail.idleTimeScale` equal to
 
 ```
 src/
-  core/      Config (every tunable value), GameTime, Input
-  sim/       Board, Skater, Fingers, Tricks, Landing, Park   — renderer-free
+  core/      Config (every tunable value), GameTime, Input, Haptics
+  sim/       Board, Skater, Fingers, Tricks, Grabs, Landing, Park — renderer-free
   game/      Game (state machine), FingerMapper, Score
   view/      Stage, CameraRig, BoardMesh, RiderMesh, ParkMesh, TrickFX, PostFX
   ui/        Hud

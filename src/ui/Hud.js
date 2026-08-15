@@ -27,6 +27,10 @@ export default class Hud {
       flip: $('.js-flip'),
       shuv: $('.js-shuv'),
       pitch: $('.js-pitch'),
+      spinRow: $('.js-spin-row'),
+      spin: $('.js-spin'),
+      grabRow: $('.js-grab-row'),
+      grab: $('.js-grab'),
       qualityFill: $('.js-quality-fill'),
       qualityLabel: $('.js-quality-label'),
       prompt: $('.js-prompt'),
@@ -106,6 +110,13 @@ export default class Hud {
       this.set('flip', this.el.flip, `${signed(s.spin.flip)}°`);
       this.set('shuv', this.el.shuv, `${signed(s.spin.shuv)}°`);
       this.set('pitch', this.el.pitch, `${signed(s.spin.pitch)}°`);
+
+      const bodyDeg = Math.round(s.bodySpin * 360);
+      this.el.spinRow.classList.toggle('row--hidden', Math.abs(bodyDeg) < 20);
+      this.set('spin', this.el.spin, `${signed(bodyDeg)}°`);
+
+      this.el.grabRow.classList.toggle('row--hidden', !s.grab);
+      this.set('grab', this.el.grab, s.grab ? `${s.grab} ${s.grabHold.toFixed(1)}s` : '—');
 
       const q = Math.round(s.landingQuality * 100);
       if (this._last.quality !== q) {
@@ -204,6 +215,8 @@ const TEMPLATE = /* html */ `
     <div class="row"><span class="row__k">FLIP</span><span class="row__v js-flip">0°</span></div>
     <div class="row"><span class="row__k">SHUV</span><span class="row__v js-shuv">0°</span></div>
     <div class="row"><span class="row__k">PITCH</span><span class="row__v js-pitch">0°</span></div>
+    <div class="row row--hidden js-spin-row"><span class="row__k">SPIN</span><span class="row__v js-spin">0°</span></div>
+    <div class="row row--grab row--hidden js-grab-row"><span class="row__k">GRAB</span><span class="row__v js-grab">—</span></div>
   </div>
   <div class="quality">
     <div class="quality__track"><div class="quality__fill js-quality-fill"></div></div>
@@ -238,8 +251,10 @@ const TEMPLATE = /* html */ `
       <div>
         <h3>In the air</h3>
         <p><b>Two fingers on the board.</b> Each one presses the deck where you put it.</p>
-        <p>Press near a <b>tip</b> to pitch it. Slide off the <b>toe rail</b> for a kickflip, the <b>heel rail</b> for a heelflip. Scoop <b>sideways</b> across the tail for a shove-it.</p>
+        <p>Press near a <b>tip</b> to pitch it. Slide off the <b>toe rail</b> (orange) for a kickflip, the <b>heel rail</b> (cyan) for a heelflip. Scoop <b>sideways</b> across the tail for a shove-it.</p>
         <p>Put a finger back on the spinning deck to <b>catch</b> it. Catch late for the biggest bonus.</p>
+        <p><b>Hold</b> that catch and it becomes a grab &mdash; named by where you are holding. A rail between the trucks is an Indy or a Melon; a tip is a Nosegrab or a Tailgrab. Longer holds score more.</p>
+        <p>Carve as you pop and you carry the turn into the air: that is your <b>180</b> or <b>360</b>.</p>
         <p>Keyboard: <b>W A S D</b> is one finger, <b>arrow keys</b> the other. <b>Q</b> / <b>&#47;</b> plant a finger without moving it.</p>
       </div>
     </div>
