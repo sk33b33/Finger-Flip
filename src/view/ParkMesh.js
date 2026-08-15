@@ -25,7 +25,9 @@ import { concreteTexture, concreteRoughness } from './textures.js';
 
 const SEG_Z = 0.35;
 const SEG_X = 0.55;
-const MARGIN = 11; // metres of flat deck either side of the rideable lane
+// Metres of flat deck either side of the rideable lane. Kept tight: a wide
+// empty plaza reads as slow, and the fence line is the main speed cue.
+const MARGIN = 6;
 
 export default class ParkMesh extends Group {
   constructor() {

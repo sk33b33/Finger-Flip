@@ -100,10 +100,10 @@ export const Config = {
   },
 
   camera: {
-    followDistance: 4.9,
-    followHeight: 1.62,
+    followDistance: 3.5,
+    followHeight: 1.05,
     followLag: 6.5, // higher = snappier
-    fov: 58,
+    fov: 64,
     // Close-up used during the trick, in spherical terms around the board.
     trickDistance: 1.5,
     // Looking down at the deck, not along it: the player has to see the surface

@@ -156,11 +156,13 @@ export default class RiderMesh extends Group {
     this.torso.rotation.z = -lean * 0.22;
     this.torso.rotation.y = MathUtils.lerp(0.32, 0.12, air); // shoulders open to travel
 
-    const swing = lean * 0.6;
-    this.arms[0].shoulder.rotation.set(-0.35 - air * 0.9 + swing, 0, 0.75 + air * 0.5);
-    this.arms[1].shoulder.rotation.set(-0.35 - air * 0.7 - swing, 0, -0.75 - air * 0.5);
-    this.arms[0].elbow.rotation.x = -0.5 - air * 0.5;
-    this.arms[1].elbow.rotation.x = -0.5 - air * 0.4;
+    // Arms hang forward and out rather than straight out sideways, which from
+    // a chase camera reads as a forearm pointed at the lens.
+    const swing = lean * 0.5;
+    this.arms[0].shoulder.rotation.set(-0.55 - air * 0.7 + swing, 0.2, 0.34 + air * 0.42);
+    this.arms[1].shoulder.rotation.set(-0.5 - air * 0.55 - swing, -0.2, -0.34 - air * 0.42);
+    this.arms[0].elbow.rotation.x = -0.72 - air * 0.45;
+    this.arms[1].elbow.rotation.x = -0.66 - air * 0.38;
 
     this.head.rotation.y = -0.2;
   }
