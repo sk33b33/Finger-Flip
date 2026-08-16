@@ -52,54 +52,14 @@ body {
 .hud__corner {
   position: absolute;
 }
-.hud__corner--tl {
-  top: max(18px, env(safe-area-inset-top));
-  left: max(20px, env(safe-area-inset-left));
-}
-.hud__corner--tr {
-  top: max(18px, env(safe-area-inset-top));
+.hud__corner--br {
+  bottom: max(18px, env(safe-area-inset-bottom));
   right: max(20px, env(safe-area-inset-right));
   text-align: right;
 }
 .hud__corner--bl {
   bottom: max(18px, env(safe-area-inset-bottom));
   left: max(20px, env(safe-area-inset-left));
-}
-
-/* ------------------------------------------------------------------ score */
-
-.score {
-  font-size: clamp(26px, 4.4vw, 44px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.65);
-}
-
-.score__sub {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  margin-top: 4px;
-  min-height: 20px;
-}
-
-.pending {
-  font-size: clamp(13px, 1.8vw, 17px);
-  font-weight: 600;
-  color: var(--good);
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
-}
-
-.combo {
-  font-size: clamp(13px, 1.8vw, 17px);
-  font-weight: 700;
-  color: var(--dim);
-  transition: color 0.25s ease;
-}
-.combo.is-hot {
-  color: var(--accent);
-  text-shadow: 0 0 18px rgba(255, 93, 58, 0.7);
 }
 
 .speed {
@@ -160,10 +120,10 @@ body {
    blur rather than a solid fill. */
 .trick-panel {
   position: absolute;
-  top: max(14px, env(safe-area-inset-top));
+  top: max(10px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%) translateY(-10px);
-  width: min(460px, calc(100vw - 260px));
+  width: min(520px, calc(100vw - 32px));
   padding: 7px 14px 8px;
   border-radius: 12px;
   background: rgba(10, 12, 18, 0.42);
@@ -324,7 +284,7 @@ body {
 .banner {
   position: absolute;
   left: 50%;
-  top: 38%;
+  top: 30%;
   transform: translate(-50%, -14px) scale(0.96);
   text-align: center;
   opacity: 0;
@@ -495,9 +455,8 @@ body {
    the strip drops below them and takes the full width instead. */
 @media (max-width: 620px) {
   .trick-panel {
-    top: calc(max(14px, env(safe-area-inset-top)) + 52px);
-    left: max(12px, env(safe-area-inset-left));
-    right: max(12px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
     width: auto;
     transform: translateX(0) translateY(-10px);
     padding: 6px 11px 7px;

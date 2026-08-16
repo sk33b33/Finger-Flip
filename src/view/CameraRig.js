@@ -31,6 +31,7 @@ const _up = new Vector3();
 const _long = new Vector3();
 const _short = new Vector3();
 const _drift = new Vector3();
+const _side = new Vector3();
 
 export default class CameraRig {
   constructor(camera) {
@@ -157,17 +158,23 @@ export default class CameraRig {
   chaseTarget(skater, outPos, outLook) {
     const C = Config.camera;
     const back = _tmp.set(-Math.sin(skater.yaw), 0, -Math.cos(skater.yaw));
+    // Held slightly off the centreline. A skater stands across the board, so a
+    // camera directly behind sees nothing but their own profile with one leg
+    // hiding the other — a few degrees to the side opens the stance up and
+    // shows the board under their feet.
+    const side = _side.set(Math.cos(skater.yaw), 0, -Math.sin(skater.yaw));
     outPos
       .copy(skater.position)
       .addScaledVector(back, C.followDistance)
+      .addScaledVector(side, C.followOffset)
       .add(_tmp2.set(0, C.followHeight, 0));
     // Never let the chase camera dip into a ramp.
-    const floor = groundHeight(outPos.x, outPos.z) + 0.7;
+    const floor = groundHeight(outPos.x, outPos.z) + 0.95;
     if (outPos.y < floor) outPos.y = floor;
     // Aim low and not too far ahead: it keeps the board in frame under the
     // rider's feet, which is the thing the player is about to be flipping.
-    outLook.copy(skater.position).add(_tmp2.set(0, 0.55, 0));
-    outLook.addScaledVector(_tmp.set(Math.sin(skater.yaw), 0, Math.cos(skater.yaw)), 1.2);
+    outLook.copy(skater.position).add(_tmp2.set(0, 0.95, 0));
+    outLook.addScaledVector(_tmp.set(Math.sin(skater.yaw), 0, Math.cos(skater.yaw)), 1.9);
   }
 
   /**

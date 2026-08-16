@@ -16,9 +16,6 @@ export default class Hud {
 
     const $ = (sel) => this.root.querySelector(sel);
     this.el = {
-      score: $('.js-score'),
-      pending: $('.js-pending'),
-      combo: $('.js-combo'),
       speed: $('.js-speed'),
       meterFill: $('.js-meter-fill'),
       meterWrap: $('.js-meter'),
@@ -80,18 +77,6 @@ export default class Hud {
 
   /** Called every real frame. */
   update(s) {
-    this.set('score', this.el.score, formatNumber(s.score));
-    this.set(
-      'pending',
-      this.el.pending,
-      s.pending > 0 ? `+${formatNumber(s.pending)}` : '',
-    );
-    this.set(
-      'combo',
-      this.el.combo,
-      s.comboLength > 0 ? `x${s.comboMultiplier.toFixed(2)}` : '',
-    );
-    this.el.combo.classList.toggle('is-hot', s.comboMultiplier > 2.4);
     this.set('speed', this.el.speed, `${Math.round(s.speed * 3.6)} km/h`);
 
     const pct = Math.round(s.meter * 100);
@@ -189,15 +174,7 @@ function qualityColor(q) {
 }
 
 const TEMPLATE = /* html */ `
-<div class="hud__corner hud__corner--tl">
-  <div class="score js-score">0</div>
-  <div class="score__sub">
-    <span class="pending js-pending"></span>
-    <span class="combo js-combo"></span>
-  </div>
-</div>
-
-<div class="hud__corner hud__corner--tr">
+<div class="hud__corner hud__corner--br">
   <div class="speed js-speed">0 km/h</div>
 </div>
 

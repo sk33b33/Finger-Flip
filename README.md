@@ -63,7 +63,12 @@ the landing whenever you are ready.
 a direct stand-in for the two touch points, so tricks are identical on both.
 `Q` and `/` plant a finger without moving it, which is how you catch.
 
-`H` controls · `R` restart the run · `M` mute · `P` toggle post-processing
+`H` controls · `R` restart the run · `M` mute · `P` cycle render quality
+
+The HUD is deliberately sparse: the trick readout is a translucent strip across
+the top that only appears while you are in the air, speed sits bottom-right, and
+the Nail meter bottom-left. Your score for a landed trick appears in the result
+banner.
 
 ## How it works
 
@@ -176,10 +181,10 @@ runtime — there are no asset files in this repository. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 
-**One exception, stated plainly:** the rider is modelled on Charmander, which is
-a character owned by Nintendo, Game Freak and The Pokémon Company. The mesh is
-built from scratch in `view/RiderMesh.js` rather than copied from anywhere, but
-the design is theirs. That is fine for a personal prototype and is not fine for
-anything published or sold — swap `RiderMesh.js` for an original character
-first. Nothing else in the project depends on who the rider is: the file is
-driven entirely through `setPose` / `setFade` / `setBailPose`.
+**One exception, stated plainly:** the rider is modelled on Deadpool, a
+character owned by Marvel and Disney. The mesh is built from scratch in
+`view/RiderMesh.js` rather than copied from anywhere, but the design is theirs.
+That is fine for a personal prototype and is not fine for anything published or
+sold — swap `RiderMesh.js` for an original character first. Nothing else in the
+project depends on who the rider is: the file is driven entirely through
+`setPose` / `setFade` / `setBailPose` / `update`.

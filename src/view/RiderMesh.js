@@ -2,33 +2,58 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
-  MeshBasicMaterial,
   CapsuleGeometry,
   BoxGeometry,
   SphereGeometry,
-  ConeGeometry,
   CylinderGeometry,
-  PointLight,
-  AdditiveBlending,
+  TorusGeometry,
   MathUtils,
 } from 'three';
 import Config from '../core/Config.js';
 
 /**
- * The rider: a small orange lizard with a burning tail.
+ * The rider: red suit, black panels, two katanas crossed on his back.
  *
- * Built procedurally from primitives like everything else in this project. The
- * proportions are the point — big head, short snout, stocky body, cream belly,
- * stubby limbs, and a thick tapering tail with a flame on the end that is the
- * only light source on the board besides the sun.
+ * Built procedurally from primitives like everything else here. The class name
+ * and its whole API are unchanged, because `game/Game.js` drives it by that
+ * contract: setPose, setFade, setBailPose, update, and position/quaternion
+ * written from outside. Feet stay at local y = 0 so the board sits under them.
  *
- * The class name and its whole API are unchanged from the previous rider,
- * because `game/Game.js` drives it by that contract: setPose, setFade,
- * setBailPose, and position/quaternion written from outside. Feet stay at local
- * y = 0 so the board still sits under them.
+ * ## The stance
  *
- * Local frame: +Z is the direction of travel, feet at y = 0.
+ * This is the part that matters, and the part that was wrong before. A skater
+ * does not face down the board — they stand ACROSS it:
+ *
+ *   - the two feet are separated along the board's LENGTH, one over each truck
+ *   - the body is turned close to ninety degrees from the direction of travel
+ *   - so the hips, being separated across the body, end up separated along the
+ *     board too
+ *   - and the head turns back to look where they are going
+ *
+ * The whole body therefore hangs in a frame yawed by STANCE_YAW, with the feet
+ * placed along +/-Z inside it and the head counter-rotating. Yawing only the
+ * torso and leaving the legs pointing down the board gives you someone standing
+ * on a skateboard as though it were a surfboard.
+ *
+ * Local frame: +Z is the direction of travel, +X the toe side, feet at y = 0.
  */
+
+/**
+ * How far the body is turned from the direction of travel.
+ *
+ * Not the full ninety degrees, even though that is where the feet point. A
+ * skater rides with their shoulders open, and squared up dead perpendicular
+ * they present nothing but their own profile to a chase camera sitting directly
+ * behind them — anatomically correct and completely unreadable. Fifty-odd
+ * degrees keeps the feet across the board while turning enough of the back and
+ * chest toward the lens to make a silhouette.
+ */
+const STANCE_YAW = Math.PI * 0.3;
+/** Distance from board centre to each foot: roughly over the trucks. */
+const FOOT_SPREAD = 0.2;
+/** Knee bend carried even at rest. */
+const REST_BEND = 0.2;
+
 export default class RiderMesh extends Group {
   constructor() {
     super();
@@ -39,248 +64,213 @@ export default class RiderMesh extends Group {
     const mat = (color, roughness, extra = {}) =>
       new MeshStandardMaterial({ color, roughness, transparent: true, opacity: 1, ...extra });
 
-    const body = mat(0xf0842c, 0.62);
-    const belly = mat(0xfbdfa6, 0.66);
-    const claw = mat(0xfff3dc, 0.5);
-    const eyeWhite = mat(0xfdfdfd, 0.32);
-    const iris = mat(0x1f9d4d, 0.28);
-    const pupil = mat(0x14171c, 0.3);
-    const mouth = mat(0x8c2f3a, 0.7);
+    const suit = mat(0x9c1c22, 0.58);
+    const suitDark = mat(0x6b1216, 0.6);
+    const black = mat(0x1b1c20, 0.62);
+    const leather = mat(0x7c5432, 0.72);
+    const buckle = mat(0xb02028, 0.4, { metalness: 0.3 });
+    const steel = mat(0xc9ced8, 0.24, { metalness: 0.95 });
+    const lens = mat(0xf4f4f2, 0.34);
 
-    this.materials = { body, belly, claw, eyeWhite, iris, pupil, mouth };
+    this.materials = { suit, suitDark, black, leather, buckle, steel, lens };
     this.allMaterials = Object.values(this.materials);
     this.fade = 1;
 
-    const H = Config.skater.height; // ~1.0m: stylised, taller than life
+    const H = Config.skater.height;
+
+    // Carving rolls the whole body about the board's long axis, so it wraps
+    // everything rather than being applied part by part.
+    this.leanGroup = new Group();
+    this.add(this.leanGroup);
 
     // ------------------------------------------------------------ legs ---
-    // Short and set wide, because the stance has to straddle a board.
+    // Placed along the board, not across it: back foot over the tail truck,
+    // front foot over the nose truck.
     this.legs = [];
     for (const side of [-1, 1]) {
       const hip = new Group();
-      hip.position.set(side * 0.115, H * 0.3, side * 0.1);
-      this.add(hip);
+      hip.position.set(0, H * 0.5, side * FOOT_SPREAD);
+      hip.rotation.y = STANCE_YAW;
+      this.leanGroup.add(hip);
 
-      const thigh = new Mesh(new CapsuleGeometry(0.072, H * 0.1, 4, 10), body);
-      thigh.position.y = -H * 0.07;
+      const thigh = new Mesh(new CapsuleGeometry(0.075, H * 0.19, 4, 10), suit);
+      thigh.position.y = -H * 0.12;
       thigh.castShadow = true;
       hip.add(thigh);
 
+      // Black panel down the outside of the thigh.
+      const panel = new Mesh(new CapsuleGeometry(0.052, H * 0.15, 3, 8), black);
+      panel.position.set(side * 0.045, -H * 0.12, 0.008);
+      hip.add(panel);
+
+      // Thigh strap.
+      const strap = new Mesh(new TorusGeometry(0.078, 0.011, 6, 16), black);
+      strap.rotation.x = Math.PI / 2;
+      strap.position.y = -H * 0.2;
+      hip.add(strap);
+
       const knee = new Group();
-      knee.position.y = -H * 0.14;
+      knee.position.y = -H * 0.25;
       hip.add(knee);
 
-      const shin = new Mesh(new CapsuleGeometry(0.062, H * 0.08, 4, 10), body);
-      shin.position.y = -H * 0.06;
+      const shin = new Mesh(new CapsuleGeometry(0.06, H * 0.17, 4, 10), suit);
+      shin.position.y = -H * 0.11;
       shin.castShadow = true;
       knee.add(shin);
 
       const ankle = new Group();
-      ankle.position.y = -H * 0.13;
+      ankle.position.y = -H * 0.23;
       knee.add(ankle);
 
-      const foot = new Mesh(new SphereGeometry(0.078, 12, 10), body);
-      foot.scale.set(1, 0.52, 1.35);
-      foot.position.set(0, -0.024, 0.022);
+      const boot = new Mesh(new CapsuleGeometry(0.065, H * 0.06, 4, 10), black);
+      boot.position.y = 0.03;
+      ankle.add(boot);
+
+      const foot = new Mesh(new BoxGeometry(0.105, 0.055, 0.25), black);
+      foot.position.set(0, -0.028, 0.025);
       foot.castShadow = true;
       ankle.add(foot);
 
-      // Three toe claws.
-      for (const t of [-1, 0, 1]) {
-        const toe = new Mesh(new ConeGeometry(0.017, 0.05, 8), claw);
-        toe.rotation.x = Math.PI * 0.52;
-        toe.position.set(t * 0.037, -0.03, 0.098);
-        ankle.add(toe);
-      }
+      const sole = new Mesh(new BoxGeometry(0.11, 0.018, 0.255), suitDark);
+      sole.position.set(0, -0.055, 0.025);
+      ankle.add(sole);
 
       this.legs.push({ hip, knee, ankle, side });
     }
 
     // ----------------------------------------------------------- torso ---
     this.torso = new Group();
-    this.torso.position.y = H * 0.3;
-    this.add(this.torso);
+    this.torso.position.y = H * 0.5;
+    this.torso.rotation.y = STANCE_YAW;
+    this.leanGroup.add(this.torso);
 
-    const chest = new Mesh(new CapsuleGeometry(0.15, H * 0.13, 5, 14), body);
-    chest.position.y = H * 0.1;
-    chest.scale.set(1, 1, 0.88);
+    const chest = new Mesh(new CapsuleGeometry(0.16, H * 0.21, 5, 14), suit);
+    chest.position.y = H * 0.12;
+    chest.scale.set(1, 1, 0.82);
     chest.castShadow = true;
     this.torso.add(chest);
 
-    // The cream belly is a slightly smaller shell pushed forward through the
-    // chest, which is cheaper and reads better than trying to texture it.
-    const bellyMesh = new Mesh(new SphereGeometry(0.132, 16, 14), belly);
-    bellyMesh.scale.set(0.94, 1.16, 0.72);
-    bellyMesh.position.set(0, H * 0.09, 0.055);
-    this.torso.add(bellyMesh);
+    // Black side panels: after the mask, the suit's most recognisable shape.
+    for (const side of [-1, 1]) {
+      const flank = new Mesh(new CapsuleGeometry(0.066, H * 0.17, 4, 10), black);
+      flank.position.set(side * 0.122, H * 0.13, -0.01);
+      flank.scale.set(1, 1, 0.8);
+      this.torso.add(flank);
+    }
+
+    // ------------------------------------------------------------ belt ---
+    const belt = new Mesh(new CylinderGeometry(0.158, 0.162, 0.062, 18), leather);
+    belt.scale.set(1, 1, 0.84);
+    belt.position.y = H * 0.015;
+    this.torso.add(belt);
+
+    const plate = new Mesh(new CylinderGeometry(0.042, 0.042, 0.016, 16), buckle);
+    plate.rotation.x = Math.PI / 2;
+    plate.position.set(0, H * 0.015, 0.132);
+    this.torso.add(plate);
+
+    for (const a of [-1.1, -0.5, 0.5, 1.1, 2.4, 3.2]) {
+      const pouch = new Mesh(new BoxGeometry(0.062, 0.075, 0.045), leather);
+      pouch.position.set(Math.sin(a) * 0.15, H * 0.005, Math.cos(a) * 0.125);
+      pouch.rotation.y = a;
+      this.torso.add(pouch);
+    }
 
     // ------------------------------------------------------------ head ---
-    // Deliberately oversized: it is most of the silhouette at chase distance.
     this.head = new Group();
-    this.head.position.y = H * 0.29;
+    this.head.position.y = H * 0.36;
     this.torso.add(this.head);
 
-    const skull = new Mesh(new SphereGeometry(0.155, 18, 16), body);
-    skull.scale.set(1, 0.92, 1.02);
+    const skull = new Mesh(new SphereGeometry(0.118, 18, 16), suit);
+    skull.scale.set(0.94, 1.1, 1);
     skull.castShadow = true;
     this.head.add(skull);
 
-    const snout = new Mesh(new SphereGeometry(0.105, 14, 12), body);
-    snout.scale.set(0.82, 0.66, 1.0);
-    snout.position.set(0, -0.042, 0.115);
-    this.head.add(snout);
-
-    const jaw = new Mesh(new SphereGeometry(0.088, 14, 12), belly);
-    jaw.scale.set(0.8, 0.5, 0.92);
-    jaw.position.set(0, -0.075, 0.108);
+    const jaw = new Mesh(new SphereGeometry(0.098, 14, 12), suit);
+    jaw.scale.set(0.88, 0.72, 0.94);
+    jaw.position.set(0, -0.058, 0.012);
     this.head.add(jaw);
 
-    const mouthLine = new Mesh(new BoxGeometry(0.115, 0.012, 0.09), mouth);
-    mouthLine.position.set(0, -0.058, 0.155);
-    this.head.add(mouthLine);
-
+    // The mask: black patches with white lenses set into them.
     for (const side of [-1, 1]) {
-      const nostril = new Mesh(new SphereGeometry(0.011, 8, 6), mouth);
-      nostril.position.set(side * 0.035, -0.006, 0.198);
-      this.head.add(nostril);
+      const patch = new Mesh(new SphereGeometry(0.055, 14, 12), black);
+      patch.scale.set(0.86, 0.78, 0.42);
+      patch.position.set(side * 0.052, 0.016, 0.094);
+      this.head.add(patch);
 
-      const white = new Mesh(new SphereGeometry(0.05, 14, 12), eyeWhite);
-      white.scale.set(0.78, 1, 0.62);
-      white.position.set(side * 0.088, 0.038, 0.108);
-      this.head.add(white);
-
-      const green = new Mesh(new SphereGeometry(0.032, 12, 10), iris);
-      green.scale.set(0.85, 1, 0.6);
-      green.position.set(side * 0.098, 0.034, 0.138);
-      this.head.add(green);
-
-      const black = new Mesh(new SphereGeometry(0.016, 10, 8), pupil);
-      black.scale.set(0.85, 1, 0.6);
-      black.position.set(side * 0.103, 0.036, 0.158);
-      this.head.add(black);
+      const eye = new Mesh(new SphereGeometry(0.036, 12, 10), lens);
+      eye.scale.set(0.9, 0.72, 0.32);
+      eye.position.set(side * 0.052, 0.018, 0.114);
+      this.head.add(eye);
     }
 
     // ------------------------------------------------------------ arms ---
     this.arms = [];
     for (const side of [-1, 1]) {
       const shoulder = new Group();
-      shoulder.position.set(side * 0.145, H * 0.16, 0);
+      shoulder.position.set(side * 0.185, H * 0.25, 0);
       this.torso.add(shoulder);
 
-      const upper = new Mesh(new CapsuleGeometry(0.045, H * 0.07, 4, 10), body);
-      upper.position.y = -H * 0.05;
+      const cap = new Mesh(new SphereGeometry(0.068, 12, 10), black);
+      shoulder.add(cap);
+
+      const upper = new Mesh(new CapsuleGeometry(0.052, H * 0.13, 4, 10), black);
+      upper.position.y = -H * 0.085;
       upper.castShadow = true;
       shoulder.add(upper);
 
       const elbow = new Group();
-      elbow.position.y = -H * 0.1;
+      elbow.position.y = -H * 0.17;
       shoulder.add(elbow);
 
-      const fore = new Mesh(new CapsuleGeometry(0.04, H * 0.06, 4, 10), body);
-      fore.position.y = -H * 0.045;
+      const fore = new Mesh(new CapsuleGeometry(0.045, H * 0.12, 4, 10), suit);
+      fore.position.y = -H * 0.075;
       fore.castShadow = true;
       elbow.add(fore);
 
-      // Three finger claws on each hand, which is the detail that makes the
-      // silhouette read as a lizard rather than a soft toy.
-      const hand = new Group();
-      hand.position.y = -H * 0.085;
-      elbow.add(hand);
-      for (const t of [-1, 0, 1]) {
-        const finger = new Mesh(new ConeGeometry(0.014, 0.048, 8), claw);
-        finger.rotation.z = t * 0.4;
-        finger.rotation.x = Math.PI;
-        finger.position.set(t * 0.026, -0.026, 0.006);
-        hand.add(finger);
-      }
+      const glove = new Mesh(new CapsuleGeometry(0.05, 0.05, 4, 10), black);
+      glove.position.y = -H * 0.155;
+      elbow.add(glove);
 
-      this.arms.push({ shoulder, elbow, hand, side });
+      this.arms.push({ shoulder, elbow, side });
     }
 
-    // ------------------------------------------------------------ tail ---
-    // A chain of shrinking segments, so it can be given a curve and a sway.
-    // Parented to the TORSO, not the root. A tail hung off the root points
-    // straight back down the chase camera's line of sight and puts a burning
-    // torch over the character in every frame; carried on the torso it swings
-    // with his stance and clears the shot by itself.
-    this.tail = new Group();
-    this.tail.position.set(0, H * 0.02, -0.12);
-    this.torso.add(this.tail);
+    // ------------------------------------------- katanas across the back ---
+    // The chase camera looks straight at his back, so this is the detail that
+    // does the most work for the least geometry.
+    this.rig = new Group();
+    this.rig.position.set(0, H * 0.17, -0.105);
+    this.torso.add(this.rig);
 
-    // The tail's resting shape: it drops away from the body first, then sweeps
-    // back up so the flame sits high and clear. It has to get out of the chase
-    // camera's line of sight — a tail held straight back points at the lens and
-    // puts a burning torch over everything behind it.
-    // Shallow angles on purpose: these compound down the chain, and steeper
-    // ones curl the tail into a J that swings forward under his own belly.
-    this.tailRest = [-0.18, -0.12, 0.0, 0.16, 0.28, 0.32];
+    for (const side of [-1, 1]) {
+      const sword = new Group();
+      sword.rotation.z = side * 0.55; // crossed, each tilted across the spine
+      sword.rotation.x = -0.3; // laid back against the shoulder blades
+      this.rig.add(sword);
 
-    this.tailSegments = [];
-    let parent = this.tail;
-    const SEGMENTS = 6;
-    for (let i = 0; i < SEGMENTS; i++) {
-      const t = i / (SEGMENTS - 1);
-      const seg = new Group();
-      seg.position.y = i === 0 ? 0 : -0.001;
-      seg.position.z = i === 0 ? 0 : -0.082;
-      parent.add(seg);
+      const scabbard = new Mesh(new CylinderGeometry(0.021, 0.017, 0.62, 10), black);
+      scabbard.position.y = -0.04;
+      scabbard.castShadow = true;
+      sword.add(scabbard);
 
-      const r0 = MathUtils.lerp(0.082, 0.03, t);
-      const r1 = MathUtils.lerp(0.072, 0.022, t);
-      // Each piece is longer than the spacing so consecutive segments overlap;
-      // butted end to end they read as a caterpillar rather than a tail.
-      const piece = new Mesh(new CylinderGeometry(r1, r0, 0.115, 14), body);
-      piece.rotation.x = Math.PI / 2;
-      piece.position.z = -0.045;
-      piece.castShadow = true;
-      seg.add(piece);
+      const guard = new Mesh(new CylinderGeometry(0.038, 0.038, 0.012, 12), steel);
+      guard.position.y = 0.28;
+      sword.add(guard);
 
-      // A ball at each joint fills the gap when the tail is curved.
-      const joint = new Mesh(new SphereGeometry(r0 * 0.99, 12, 10), body);
-      seg.add(joint);
+      const grip = new Mesh(new CylinderGeometry(0.017, 0.019, 0.17, 10), black);
+      grip.position.y = 0.37;
+      sword.add(grip);
 
-      this.tailSegments.push(seg);
-      parent = seg;
+      const pommel = new Mesh(new CylinderGeometry(0.021, 0.021, 0.018, 10), steel);
+      pommel.position.y = 0.46;
+      sword.add(pommel);
+
+      // The harness strap carrying it, crossing to the opposite shoulder.
+      const strap = new Mesh(new BoxGeometry(0.038, 0.5, 0.014), black);
+      strap.position.set(side * 0.07, 0.06, 0.02);
+      strap.rotation.z = side * 0.5;
+      this.rig.add(strap);
     }
-
-    // ----------------------------------------------------------- flame ---
-    this.flame = new Group();
-    this.flame.position.z = -0.075;
-    parent.add(this.flame);
-
-    const flameMat = (color, opacity) =>
-      new MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity,
-        blending: AdditiveBlending,
-        depthWrite: false,
-      });
-
-    // Kept modest on purpose: these are additive and sit above the bloom
-    // threshold, so a bright flame this close to the camera turns the whole
-    // character into a smear.
-    this.flameOuter = new Mesh(new ConeGeometry(0.055, 0.15, 12), flameMat(0xff5a12, 0.34));
-    this.flameInner = new Mesh(new ConeGeometry(0.03, 0.092, 10), flameMat(0xffb02a, 0.4));
-    this.flameCore = new Mesh(new ConeGeometry(0.014, 0.048, 8), flameMat(0xffe9b0, 0.5));
-    for (const m of [this.flameOuter, this.flameInner, this.flameCore]) {
-      m.position.y = 0.06;
-      this.flame.add(m);
-    }
-    this.flameMaterials = [
-      this.flameOuter.material,
-      this.flameInner.material,
-      this.flameCore.material,
-    ];
-    this.flameBaseOpacity = this.flameMaterials.map((m) => m.opacity);
-
-    // One small light so the flame actually throws warmth onto the deck and the
-    // ground beneath it, rather than being a sticker that glows at nothing.
-    this.flameLight = new PointLight(0xff8a3a, 0.55, 1.9, 2);
-    this.flameLight.position.y = 0.09;
-    this.flame.add(this.flameLight);
-
-    this.flicker = 0;
 
     this.setPose(0, 0, 0);
     this.setFade(0);
@@ -293,76 +283,44 @@ export default class RiderMesh extends Group {
    */
   setPose(crouch, lean, air) {
     const H = Config.skater.height;
-    const bend = crouch * 0.85 + air * 0.9;
+    // Never fully straight-legged: a skater rides with the knees soft, and
+    // locked-out legs read as a mannequin balanced on a plank.
+    const bend = REST_BEND + crouch * 0.8 + air * 0.9;
 
-    for (const { hip, knee, ankle, side } of this.legs) {
-      hip.rotation.x = -bend * 0.62;
-      knee.rotation.x = bend * 1.24;
-      ankle.rotation.x = -bend * 0.6;
-      // Riding stance: feet turned across the board.
-      hip.rotation.y = side * 0.22;
-      hip.position.y = H * 0.3 - bend * H * 0.05;
+    for (const { hip, knee, ankle } of this.legs) {
+      // Knees bend out over the toes, which after the stance yaw is across the
+      // board — the direction a skater actually loads in.
+      hip.rotation.x = -bend * 0.7;
+      knee.rotation.x = bend * 1.38;
+      ankle.rotation.x = -bend * 0.68;
+      hip.position.y = H * 0.5 - bend * H * 0.055;
     }
 
-    this.torso.position.y = H * 0.3 - bend * H * 0.1;
+    this.torso.position.y = H * 0.5 - bend * H * 0.13;
     this.torso.rotation.x = bend * 0.3;
-    this.torso.rotation.z = -lean * 0.2;
-    // Turned well across the board, the way a skater actually stands. From a
-    // chase camera it is the difference between a character and an orange blob:
-    // side-on you get the belly, the snout and the tail all at once.
-    this.torso.rotation.y = MathUtils.lerp(0.82, 0.55, air);
+    // Shoulders open toward the nose as he loads, the way a skater winds up.
+    this.torso.rotation.y = STANCE_YAW - bend * 0.16;
 
-    // The head counter-rotates so he keeps looking along the board however
-    // much the body is turned across it.
-    this.head.rotation.y = MathUtils.lerp(-0.6, -0.4, air); // counter-turn to look ahead
-    this.head.rotation.x = -bend * 0.18;
+    // Carving rolls the whole body about the board's long axis.
+    this.leanGroup.rotation.z = -lean * 0.2;
 
-    // Short arms held out and forward for balance, wider when airborne.
-    const swing = lean * 0.45;
-    this.arms[0].shoulder.rotation.set(-0.5 - air * 0.5 + swing, 0.18, 0.72 + air * 0.5);
-    this.arms[1].shoulder.rotation.set(-0.46 - air * 0.42 - swing, -0.18, -0.72 - air * 0.5);
-    this.arms[0].elbow.rotation.x = -0.5 - air * 0.3;
-    this.arms[1].elbow.rotation.x = -0.46 - air * 0.26;
+    // And the head comes back round to look where he is going.
+    this.head.rotation.y = -STANCE_YAW * MathUtils.lerp(0.82, 0.62, air);
+    this.head.rotation.x = -bend * 0.16;
 
-    // The tail lifts as a counterweight when he crouches, and streams out
-    // behind him in the air.
-    this.setTailCurve(0.34 - bend * 0.5 - air * 0.2, lean * 0.3);
+    // Arms out for balance, wider and higher in the air.
+    const swing = lean * 0.5;
+    this.arms[0].shoulder.rotation.set(-0.3 - air * 0.7 + swing, 0.16, 0.62 + air * 0.55);
+    this.arms[1].shoulder.rotation.set(-0.26 - air * 0.6 - swing, -0.16, -0.62 - air * 0.55);
+    this.arms[0].elbow.rotation.x = -0.62 - air * 0.5;
+    this.arms[1].elbow.rotation.x = -0.56 - air * 0.44;
   }
+
+  /** Nothing animates per frame, but the game calls it; keep the contract. */
+  update() {}
 
   /**
-   * Bend the tail chain away from its resting shape. `lift` raises the whole
-   * sweep, `sway` swings it sideways.
-   */
-  setTailCurve(lift, sway) {
-    for (let i = 0; i < this.tailSegments.length; i++) {
-      const t = i / (this.tailSegments.length - 1);
-      // Bend concentrated toward the base, so the tip stays straight and the
-      // flame keeps a readable direction.
-      const w = 1 - t * 0.55;
-      this.tailSegments[i].rotation.x = this.tailRest[i] + lift * w * 0.34;
-      this.tailSegments[i].rotation.y = sway * w * 0.3;
-    }
-  }
-
-  /** Animate the flame. Called every real frame from the game loop. */
-  update(realDelta) {
-    this.flicker += realDelta;
-    const a = Math.sin(this.flicker * 17.3) * 0.5 + Math.sin(this.flicker * 29.7) * 0.3;
-    const b = Math.sin(this.flicker * 11.1 + 1.3);
-
-    const scale = 1 + a * 0.11;
-    this.flameOuter.scale.set(1 + b * 0.07, scale, 1 + b * 0.07);
-    this.flameInner.scale.set(1 - b * 0.05, scale * 1.04, 1 - b * 0.05);
-    this.flameCore.scale.setScalar(1 + a * 0.14);
-    this.flame.rotation.z = b * 0.08;
-
-    // The light breathes with the flame, but never all the way down.
-    this.flameLight.intensity = (1 - this.fade) * (0.5 + a * 0.18);
-  }
-
-  /**
-   * Ghost him out as the trick camera closes in. At close range he would sit
-   * right across the deck, and the deck is what the player has to read.
+   * Ghost him out as the trick camera closes in, then cut him.
    * @param {number} amount 0 = solid, 1 = fully faded
    */
   setFade(amount) {
@@ -371,27 +329,14 @@ export default class RiderMesh extends Group {
     const opacity = 1 - amount;
     for (const m of this.allMaterials) {
       m.opacity = opacity;
-      // Depth writing stays ON even when ghosted. He is built from a dozen
-      // overlapping shells, and without it every one of them blends over the
-      // last — ten layers at 6% opacity compound to nearly half, so a "faded"
-      // character sits solidly over the deck. Writing depth means the nearest
-      // surface wins and 6% really is 6%.
+      // Depth writing stays on: he is dozens of overlapping shells, and without
+      // it every one blends over the last, so a "faded" rider still sits solidly
+      // over the deck.
       m.depthWrite = true;
     }
-    // The flame is additive, so it does not fade with alpha the way the body
-    // does — it has to be scaled down explicitly or it stays as a bright smear
-    // hanging over the deck.
-    for (let i = 0; i < this.flameMaterials.length; i++) {
-      this.flameMaterials[i].opacity = this.flameBaseOpacity[i] * opacity;
-    }
-    this.flameLight.intensity = opacity * 0.5;
-
-    // He is fifty-odd overlapping shells in bright orange, and even at a few
-    // percent each that is a visible haze over the deck once they stack. So he
-    // fades part of the way and is then cut outright. The camera is mid-slam
-    // into the close-up when it happens, which reads as a shot change rather
-    // than a pop — and it drops fifty draw calls at the exact moment the
-    // slow-motion composite is costing the most.
+    // He fades part of the way and is then cut outright, because even a few
+    // percent per shell stacks into a visible haze over the board. The camera is
+    // mid-slam into the close-up when it happens, so it reads as a shot change.
     this.visible = opacity > 0.34;
   }
 
@@ -399,14 +344,12 @@ export default class RiderMesh extends Group {
   setBailPose(t) {
     const k = Math.min(1, t * 3);
     for (const { hip, knee } of this.legs) {
-      hip.rotation.x = -1.2 * k;
-      knee.rotation.x = 1.9 * k;
+      hip.rotation.x = -1.3 * k;
+      knee.rotation.x = 2.0 * k;
     }
-    this.torso.rotation.x = 0.8 * k;
-    this.head.rotation.x = 0.4 * k;
-    this.arms[0].shoulder.rotation.set(-2.0 * k, 0, 0.9);
-    this.arms[1].shoulder.rotation.set(-1.8 * k, 0, -0.9);
-    // Tail thrown up and out as he goes down.
-    this.setTailCurve(0.9 * k, Math.sin(t * 9) * 0.5 * k);
+    this.torso.rotation.x = 0.85 * k;
+    this.head.rotation.x = 0.35 * k;
+    this.arms[0].shoulder.rotation.set(-2.1 * k, 0, 0.9);
+    this.arms[1].shoulder.rotation.set(-1.9 * k, 0, -0.9);
   }
 }

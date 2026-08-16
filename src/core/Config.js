@@ -39,7 +39,7 @@ export const Config = {
     // turning circle, which is what a slower roll should feel like.
     steerRate: 1.5, // rad/s at full lock
     steerSpeedFalloff: 0.55, // steering authority lost at top speed
-    height: 1.0, // read only by view/RiderMesh.js; the sim never uses it
+    height: 1.78, // read only by view/RiderMesh.js; the sim never uses it
   },
 
   pop: {
@@ -129,9 +129,9 @@ export const Config = {
   },
 
   camera: {
-    // Framed for a ~1m character, not a 1.7m one.
-    followDistance: 2.3,
-    followHeight: 0.78,
+    followDistance: 3.4,
+    followHeight: 1.18,
+    followOffset: 0.95, // metres off the centreline, to open up the stance
     followLag: 6.5, // higher = snappier
     fov: 64,
     // Close-up used during the trick, in spherical terms around the board. The
