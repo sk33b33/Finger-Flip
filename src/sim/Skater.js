@@ -98,7 +98,7 @@ export default class Skater {
     this.speed -= S.rollFriction * dt;
     this.speed += slopeAccel * dt;
     if (controls.brake > 0) this.speed -= S.brake * controls.brake * dt;
-    this.speed = clamp(this.speed, 0.5, S.maxSpeed * 1.25);
+    this.speed = clamp(this.speed, 0.5, S.maxSpeed * S.overspeed);
 
     this.position.addScaledVector(fwd, this.speed * dt);
     this.position.x = softClampLane(this.position.x);

@@ -12,7 +12,7 @@ import {
   Vector2,
 } from 'three';
 import Config from '../core/Config.js';
-import { groundHeight, isLip, runLength } from '../sim/Park.js';
+import { groundHeight, featureHeightAt, isLip, runLength } from '../sim/Park.js';
 import {
   concreteTexture,
   concreteRoughness,
@@ -69,12 +69,15 @@ export default class ParkMesh extends Group {
       this.tiles.push(tile);
     }
 
-    // A single far ground plane so the concrete never just stops in mid-air.
+    // A single far ground plane so the concrete never just stops in mid-air. It
+    // is a thick slab rather than a sheet, and it sits low enough to stay under
+    // the lowest point of the lap's descent — a thin plane at y = 0 would cut
+    // straight through the terrain wherever the ground dips below it.
     this.haze = new Mesh(
-      new BoxGeometry(900, 0.04, this.run * 3),
+      new BoxGeometry(900, 12, this.run * 3),
       new MeshBasicMaterial({ color: 0x252a32 }),
     );
-    this.haze.position.y = -0.08;
+    this.haze.position.y = -6.1;
     this.add(this.haze);
   }
 
@@ -189,9 +192,11 @@ export default class ParkMesh extends Group {
         positions[p++] = z;
         uvs[q++] = (x + halfX) / (halfX * 2);
         uvs[q++] = z / this.run;
-        // Anything raised is a built feature, and built features are wood. The
-        // ramp shrinks the transition to the first few centimetres of the climb.
-        blend[b++] = smoothstep(0.02, 0.14, h);
+        // Anything raised above the TERRAIN is a built feature, and built
+        // features are wood. Keyed off absolute height instead, the whole of
+        // the lap's descent would come out below zero and the long climb back
+        // would be painted as one enormous wooden ramp.
+        blend[b++] = smoothstep(0.02, 0.14, featureHeightAt(x, z));
       }
     }
     for (let j = 0; j < nz; j++) {

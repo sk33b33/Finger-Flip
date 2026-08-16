@@ -13,7 +13,14 @@ import FingerFlipController from '../src/sim/Fingers.js';
 import { recognise } from '../src/sim/Tricks.js';
 import { evaluateLanding, Quality } from '../src/sim/Landing.js';
 import Config from '../src/core/Config.js';
-import { groundHeight, groundNormal, groundSlopeZ, isLip, getFeatures } from '../src/sim/Park.js';
+import {
+  groundHeight,
+  groundNormal,
+  groundSlopeZ,
+  isLip,
+  getFeatures,
+  featureHeightAt,
+} from '../src/sim/Park.js';
 import Skater from '../src/sim/Skater.js';
 
 const STANCE = new Quaternion(); // identity: board travelling down +Z, level
@@ -204,9 +211,36 @@ test('the park never drops away under a rider without being a lip', () => {
 });
 
 test('the run loops seamlessly', () => {
+  // The lap descends and climbs back, so the property that matters is that it
+  // arrives back at exactly the height it started — a step at the seam would be
+  // a wall appearing out of nowhere every lap — and that it gets there smoothly
+  // rather than snapping in the last metre.
   assert.equal(groundHeight(0, 0), 0);
-  assert.equal(groundHeight(0, 219.9), 0);
   assert.equal(groundHeight(0, 0), groundHeight(0, 220));
+  assert.ok(
+    Math.abs(groundHeight(0, 219.9)) < 0.002,
+    `ground is ${groundHeight(0, 219.9).toFixed(4)}m off the seam height just before it`,
+  );
+});
+
+test('the lap descends and recovers', () => {
+  // The shape the terrain is meant to have: flat off the seam, a clear drop, a
+  // level stretch, then back to where it started.
+  const at = (z) => groundHeight(0, z) - featureHeightAt(0, z);
+  assert.equal(at(10), 0, 'should be flat off the seam');
+  assert.ok(at(120) < -2.5, `should have dropped by the level section, got ${at(120).toFixed(2)}`);
+  assert.ok(Math.abs(at(120) - at(140)) < 0.05, 'the level section should be level');
+  assert.ok(at(219) > -0.1, `should be back at the seam height, got ${at(219).toFixed(2)}`);
+});
+
+test('the descent never reads as a launch lip', () => {
+  // isLip treats a drop steeper than a 0.2 grade as a takeoff edge. A downhill
+  // above that would put the rider permanently airborne, so the bare terrain
+  // has to stay well under it.
+  for (let z = 0; z < 220; z += 0.25) {
+    if (featureHeightAt(0, z) > 0.02) continue; // built features may be lips
+    assert.ok(!isLip(0, z, 0.5), `bare terrain at z=${z.toFixed(1)} reads as a lip`);
+  }
 });
 
 test('the park has launchable lips spread through the run', () => {
@@ -352,4 +386,59 @@ test('a transition cannot launch the rider out of the park', () => {
   // there multiplied into a 10m launch. The cap is what keeps it a skatepark.
   const quarter = runUpTo(68, 1.0);
   assert.ok(quarter.peak < 4.5, `quarterpipe launched to ${quarter.peak.toFixed(1)}m`);
+});
+
+/**
+ * Rolls the rider along the lane's shoulder, out past every feature's
+ * half-width, so what is under the wheels is the terrain and nothing else.
+ * Riding the centreline instead measures the plateau and the banks pumping
+ * speed, which is a different question.
+ */
+function rollShoulder(fromZ, toZ, startSpeed) {
+  const s = new Skater();
+  s.reset(fromZ);
+  s.position.x = 8.5; // outside the widest feature (the roller, at 8.0)
+  s.position.y = groundHeight(s.position.x, s.position.z);
+  s.speed = startSpeed;
+  const controls = { steer: 0, push: 1, brake: 0, charging: false };
+  let peak = 0;
+  for (let i = 0; i < 60000 && s.position.z < toZ; i++) {
+    s.step(1 / 240, controls);
+    peak = Math.max(peak, s.speed);
+  }
+  return { speed: s.speed, peak, z: s.position.z };
+}
+
+test('the descent gives speed back without running away with the game', () => {
+  // Gravity along the descent outruns rolling friction roughly five to one, so
+  // without a ceiling the rider spends a third of every lap pinned at the cap
+  // and the speedo never shows the speed the game is tuned around.
+  const S = Config.skater;
+  const down = rollShoulder(36, 84, S.maxSpeed);
+  assert.ok(
+    down.peak > S.maxSpeed * 1.02,
+    `the descent should be worth free speed, got ${down.peak.toFixed(2)}`,
+  );
+  assert.ok(
+    down.peak <= S.maxSpeed * S.overspeed + 1e-6,
+    `the descent hit ${(down.peak * 3.6).toFixed(0)} km/h, over the ceiling`,
+  );
+
+  // And the level stretch that follows hands it back, so the number the player
+  // reads for most of the lap is the cruise.
+  const level = rollShoulder(86, 144, down.speed);
+  assert.ok(
+    Math.abs(level.speed - S.maxSpeed) < 0.1,
+    `expected the level stretch to settle at cruise, got ${level.speed.toFixed(2)}`,
+  );
+});
+
+test('the recovery climb never stalls the rider', () => {
+  // The haul back to the seam is shallower than the descent, but it is 75m of
+  // it. A rider who arrives at the seam crawling has a bad first feature.
+  const up = rollShoulder(146, 219, Config.skater.maxSpeed * 0.75);
+  assert.ok(
+    up.speed > Config.skater.maxSpeed * 0.85,
+    `crawled to the seam at ${up.speed.toFixed(2)} m/s`,
+  );
 });

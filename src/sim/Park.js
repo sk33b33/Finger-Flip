@@ -58,6 +58,43 @@ const FEATURES = [
   { type: 'roller', z0: 196, z1: 208, height: 0.8, halfWidth: 8.0 },
 ];
 
+/**
+ * The lap's underlying gradient, before any feature sits on top of it: flat off
+ * the seam, a clear descent, a level stretch, then a long shallow recovery back
+ * to zero.
+ *
+ * Two things constrain the shape:
+ *
+ *   - It MUST return to exactly 0 at the seam, or the endless loop steps.
+ *   - The descent must stay well under a 0.2 grade. isLip() calls any drop
+ *     steeper than that a launch edge, and a downhill above the threshold would
+ *     read as one continuous lip with the rider permanently airborne.
+ *
+ * The recovery is spread over far more distance than the drop, so the climb is
+ * barely perceptible while the descent is not.
+ */
+const TERRAIN = {
+  // Starts past the warm-up kicker, so the first feature of the lap is on flat
+  // ground and the descent does not quietly flatten its takeoff angle.
+  descentStart: 34,
+  descentEnd: 85,
+  levelEnd: 145,
+  drop: 3.0,
+  // Descent peaks at an 8.8% grade over 51m; the recovery spreads the same 3m
+  // over 75m for 6%. Both are comfortably under the 20% lip threshold, and the
+  // asymmetry is what makes the drop read while the climb does not.
+};
+
+/** Height of the underlying ground at z, before features. Always <= 0. */
+function baseHeight(z) {
+  const T = TERRAIN;
+  if (z <= T.descentStart) return 0;
+  if (z < T.descentEnd) return -T.drop * smoothstep(T.descentStart, T.descentEnd, z);
+  if (z < T.levelEnd) return -T.drop;
+  // The long haul back up to the seam.
+  return -T.drop * (1 - smoothstep(T.levelEnd, RUN, z));
+}
+
 const _n = new Vector3();
 
 /** Wrap a world Z into the park's repeating domain. */
@@ -67,8 +104,18 @@ export function wrapZ(z) {
   return t;
 }
 
-/** Height of the park surface under (x, z). */
+/** Height of the park surface under (x, z): the terrain, plus anything built on it. */
 export function groundHeight(x, z) {
+  const t = wrapZ(z);
+  return baseHeight(t) + featureHeightAt(x, t);
+}
+
+/**
+ * How far the built features rise above the terrain at a point. Separate from
+ * groundHeight because several things care about height ABOVE the ground rather
+ * than absolute height — the wood/concrete split, and what counts as climbable.
+ */
+export function featureHeightAt(x, z) {
   const t = wrapZ(z);
   let h = 0;
   for (const f of FEATURES) {

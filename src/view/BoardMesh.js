@@ -293,10 +293,18 @@ export default class BoardMesh extends Group {
     }
   }
 
-  /** Wheels roll while the board is on the ground. */
+  /**
+   * Wheels roll while the board is on the ground.
+   *
+   * About X, not Y. Each wheel is built with `rotation.z = PI/2` to lay the
+   * cylinder's axis along the board's X — the axle. Spinning it about Y then
+   * swings that axle around the vertical and the wheels castor like trolley
+   * wheels instead of rolling. Rotating about X leaves the axle where it is and
+   * turns the wheel on it, which is the whole idea.
+   */
   updateWheels(speed, dt) {
     this.wheelSpin += (speed / 0.027) * dt;
-    for (const w of this.wheels) w.rotation.y = this.wheelSpin;
+    for (const w of this.wheels) w.rotation.x = this.wheelSpin;
   }
 
   /** World-space position of a point given in deck-local coordinates. */

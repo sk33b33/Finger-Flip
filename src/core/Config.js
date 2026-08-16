@@ -28,13 +28,20 @@ export const Config = {
   },
 
   skater: {
-    // Halved from the original 13.5. The forces that act on the speed are
-    // halved with it, so acceleration and braking still take the same time to
-    // do their job rather than becoming twitchy at the lower top end.
-    maxSpeed: 6.75,
-    accel: 3.2,
-    brake: 4.5,
-    rollFriction: 0.18,
+    // 35 km/h. The forces that act on the speed are scaled with it, so
+    // acceleration and braking still take the same time to do their job rather
+    // than becoming twitchy at a different top end.
+    maxSpeed: 9.72,
+    accel: 4.6,
+    brake: 6.5,
+    rollFriction: 0.26,
+    // Ceiling on gravity-assisted speed, as a multiple of maxSpeed. The lap now
+    // has a real descent, and gravity along it outruns rolling friction by five
+    // to one — so this is not a rare overshoot off a drop any more, it is what
+    // the speedo reads for a third of every lap. Kept tight so the number the
+    // player mostly sees is the 35 the game is tuned around, with the hill
+    // worth a push rather than a different game.
+    overspeed: 1.1,
     // Deliberately NOT halved: the same yaw rate at half the speed halves the
     // turning circle, which is what a slower roll should feel like.
     steerRate: 1.5, // rad/s at full lock
@@ -130,8 +137,12 @@ export const Config = {
 
   camera: {
     followDistance: 3.4,
-    followHeight: 1.18,
-    followOffset: 0.95, // metres off the centreline, to open up the stance
+    // Chest height on the rider, looking down at the deck. From dead behind,
+    // the rider stands between the camera and the board, so the shot needs some
+    // elevation or the thing you are about to flip spends the whole roll-in
+    // hidden behind a pair of legs. The side offset used to solve this; a
+    // centred camera has to solve it by looking down instead.
+    followHeight: 1.5,
     followLag: 6.5, // higher = snappier
     fov: 64,
     // Close-up used during the trick, in spherical terms around the board. The

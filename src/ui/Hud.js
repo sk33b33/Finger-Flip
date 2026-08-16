@@ -39,21 +39,55 @@ export default class Hud {
       commit: $('.js-commit'),
       help: $('.js-help'),
       start: $('.js-start'),
-      startBtn: $('.js-start-btn'),
+      splashImg: $('.js-splash-img'),
       hint: $('.js-hint'),
     };
 
     this._last = {};
     this.bannerTimer = 0;
     this.promptTimer = 0;
+
+    this._readySplash();
   }
 
+  /**
+   * The splash art fades in once it has actually arrived; a title card that
+   * pops in halfway through being read is worse than one that arrives late.
+   *
+   * It fades in on error and on a timeout too. The overlay is the thing you tap
+   * to start, so it must never be left invisible waiting on an image.
+   */
+  _readySplash() {
+    const img = this.el.splashImg;
+    const ready = () => this.el.start.classList.add('is-ready');
+    if (!img || img.complete) {
+      ready();
+      return;
+    }
+    img.addEventListener('load', ready, { once: true });
+    img.addEventListener('error', ready, { once: true });
+    setTimeout(ready, 2500);
+  }
+
+  /**
+   * Tap anywhere on the splash to drop in — the whole overlay is the target,
+   * and it fires on pointerdown rather than click so the tap lands instantly.
+   */
   onStart(fn) {
-    this.el.startBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.el.start.classList.add('is-hidden');
-      fn();
-    });
+    this.el.start.addEventListener(
+      'pointerdown',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.hideStart();
+        fn();
+      },
+      { once: true },
+    );
+  }
+
+  hideStart() {
+    this.el.start.classList.add('is-hidden');
   }
 
   onCommit(fn) {
@@ -173,6 +207,13 @@ function qualityColor(q) {
   return 'linear-gradient(90deg,#e0452f,#ff8a6a)';
 }
 
+/**
+ * Where the splash art lives. The only two files in the project that are not
+ * generated at runtime, so they come from `public/` — via the bundler's base so
+ * the game still works when it is served from a sub-path.
+ */
+const BASE = import.meta.env?.BASE_URL ?? '/';
+
 const TEMPLATE = /* html */ `
 <div class="hud__corner hud__corner--br">
   <div class="speed js-speed">0 km/h</div>
@@ -239,21 +280,14 @@ const TEMPLATE = /* html */ `
   </div>
 </div>
 
-<div class="overlay js-start">
-  <div class="panel panel--start">
-    <div class="brand">FINGER<span>FLIP</span></div>
-    <p class="tagline">Roll in. Pop. Then the world slows down and it is just you, two fingers and a spinning deck.</p>
-    <div class="cols">
-      <div>
-        <h3>Touch</h3>
-        <p>Hold to charge your pop. In the air, put <b>a finger from each hand</b> on the board and work the deck.</p>
-      </div>
-      <div>
-        <h3>Keyboard</h3>
-        <p><b>Space</b> pop &middot; <b>WASD</b> left finger &middot; <b>Arrows</b> right finger &middot; <b>Q</b> and <b>&#47;</b> to plant &amp; catch</p>
-      </div>
-    </div>
-    <button class="start-btn js-start-btn" type="button">DROP IN</button>
+<div class="overlay overlay--splash js-start">
+  <picture class="splash__art">
+    <source srcset="${BASE}splash.webp" type="image/webp" />
+    <img class="js-splash-img" src="${BASE}splash.jpg" alt="Finger Flip" decoding="async" />
+  </picture>
+  <div class="splash__prompt">
+    <div class="splash__tap">TAP TO ENTER</div>
+    <div class="splash__sub">or press any key &nbsp;&middot;&nbsp; H for controls</div>
   </div>
 </div>
 `;

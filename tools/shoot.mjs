@@ -51,7 +51,7 @@ const waitFor = async (fn, ms = 20000) => {
 };
 
 await shot('01-start');
-await page.click('.js-start-btn');
+await page.click('.js-start');
 await page.waitForTimeout(1800);
 await shot('02-rolling');
 

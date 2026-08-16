@@ -10,6 +10,15 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Finger Flip</title>
+    <!-- A deck from above, inline: no request, and no 404 for /favicon.ico. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cg transform='rotate(-38 16 16)'%3E%3Crect x='8' y='6.5' width='16' height='19' rx='8' fill='%23d7f23a'/%3E%3Ccircle cx='12.4' cy='10.6' r='1.4' fill='%230b0e14'/%3E%3Ccircle cx='19.6' cy='10.6' r='1.4' fill='%230b0e14'/%3E%3Ccircle cx='12.4' cy='21.4' r='1.4' fill='%230b0e14'/%3E%3Ccircle cx='19.6' cy='21.4' r='1.4' fill='%230b0e14'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <!-- The title card is the first thing on screen, so it starts downloading
+         before the module graph does. `type` means a browser without WebP skips
+         this and picks up the JPEG from the <picture> instead. -->
+    <link rel="preload" as="image" href="/splash.webp" type="image/webp" />
     <meta
       name="description"
       content="A 3D skateboarding game where you flip the board with a finger from each hand, in slow motion."

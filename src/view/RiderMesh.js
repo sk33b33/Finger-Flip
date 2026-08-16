@@ -44,11 +44,15 @@ import Config from '../core/Config.js';
  * Not the full ninety degrees, even though that is where the feet point. A
  * skater rides with their shoulders open, and squared up dead perpendicular
  * they present nothing but their own profile to a chase camera sitting directly
- * behind them — anatomically correct and completely unreadable. Fifty-odd
- * degrees keeps the feet across the board while turning enough of the back and
- * chest toward the lens to make a silhouette.
+ * behind them — anatomically correct and completely unreadable.
+ *
+ * The camera sits dead centre, so this carries the whole job of keeping the
+ * stance legible: forty degrees turns enough of the back and chest toward the
+ * lens to separate the legs and show the board. The FEET are unaffected either
+ * way — they are placed along the deck by FOOT_SPREAD, so the part of the
+ * stance that actually matters stays true whatever this is set to.
  */
-const STANCE_YAW = Math.PI * 0.3;
+const STANCE_YAW = Math.PI * 0.22;
 /** Distance from board centre to each foot: roughly over the trucks. */
 const FOOT_SPREAD = 0.2;
 /** Knee bend carried even at rest. */

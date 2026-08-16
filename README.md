@@ -8,8 +8,8 @@ in your hands: two fingers on the board, working the deck until it comes round
 the way you want it, and a catch to stop it flat before you land.
 
 Runs in the browser. Real multi-touch on a phone or tablet, keyboard on a
-desktop, no install and no asset downloads — every texture, sound and piece of
-geometry in the game is generated at runtime.
+desktop, no install. Every texture, sound and piece of geometry *in the game* is
+generated at runtime; the only files it downloads are the title card.
 
 ```bash
 npm install
@@ -163,8 +163,11 @@ src/
   ui/        Hud
   audio/     Audio
 test/        headless sim + trick-vocabulary tests
-tools/       shoot.mjs (drives the game in a browser and screenshots it)
-             tune.mjs  (measures flick strength across frame rates)
+public/      splash.webp / splash.jpg — the title card, the only assets
+tools/       shoot.mjs   (drives the game in a browser and screenshots it)
+             tune.mjs    (measures flick strength across frame rates)
+             aspects.mjs (frames the HUD at four device shapes)
+             encode-splash.mjs (re-encodes the title card for the web)
 ```
 
 The `sim/` layer never imports the renderer, which is why the whole trick
@@ -177,7 +180,9 @@ Nothing gameplay-affecting is a magic number anywhere else.
 ## Notes
 
 All code, geometry, textures and audio here are original and generated at
-runtime — there are no asset files in this repository. The slow-motion
+runtime. The one exception is `public/splash.webp` (with a `.jpg` fallback), the
+title card — re-encode it from a source image with `tools/encode-splash.mjs`.
+Nothing the game renders depends on it. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 

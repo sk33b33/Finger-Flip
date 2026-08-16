@@ -207,7 +207,7 @@ export default class Game {
     }
     // Any touch or key counts as the gesture that unlocks audio.
     if (!this.started && (i.touchCount > 0 || i.keysPressed.size > 0)) {
-      this.hud.el.start.classList.add('is-hidden');
+      this.hud.hideStart();
       this.begin();
     }
   }

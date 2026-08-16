@@ -28,7 +28,7 @@ for (const size of SIZES) {
   const page = await browser.newPage({ viewport: { width: size.width, height: size.height } });
   await page.goto('http://localhost:5192/', { waitUntil: 'load' });
   await page.waitForTimeout(2600);
-  await page.click('.js-start-btn').catch(() => {});
+  await page.click('.js-start').catch(() => {});
   await page.waitForTimeout(700);
   await page.evaluate(() => window.FF.game.pop(1.0));
 
