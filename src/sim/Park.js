@@ -18,39 +18,44 @@ const RUN = Config.park.runLength;
  * Features are ordered along +Z. Each is a smooth height ramp so that the
  * derivative (and therefore the surface normal) is continuous: a discontinuous
  * normal makes landings feel arbitrary.
+ *
+ * Heights are bounded by what the rider can actually climb. A rider arriving at
+ * cruise can rise at most v^2 / 2g before stalling, so nothing here may exceed
+ * that with margin — otherwise the feature is not a ramp, it is a wall you
+ * grind to a halt against. There is a test for it.
  */
 const FEATURES = [
   // A gentle warm-up kicker.
-  { type: 'kicker', z0: 26, z1: 32, height: 0.9, halfWidth: 5.0, curve: 2.0 },
+  { type: 'kicker', z0: 26, z1: 32, height: 0.75, halfWidth: 5.0, curve: 2.0 },
 
   // A ledge to pop off the end of. Its sides are vertical, which the lip
   // detector already reads as a launch edge.
-  { type: 'ledge', z0: 44, z1: 54, height: 0.45, halfWidth: 2.2, blend: 0.5 },
+  { type: 'ledge', z0: 44, z1: 54, height: 0.4, halfWidth: 2.2, blend: 0.5 },
 
   // Quarterpipe: a true concave transition, the shape the park otherwise
   // lacks entirely. Ride up the curve and it throws you straight upward.
-  { type: 'quarter', z0: 66, radius: 3.4, height: 2.2, halfWidth: 6.5 },
+  { type: 'quarter', z0: 66, radius: 2.4, height: 1.1, halfWidth: 6.5 },
 
   // A bank up onto a plateau, then a drop off the far end.
-  { type: 'plateau', z0: 92, z1: 99, z2: 111.4, z3: 112.8, height: 1.55, halfWidth: 7.0 },
+  { type: 'plateau', z0: 92, z1: 99, z2: 111.4, z3: 112.8, height: 1.05, halfWidth: 7.0 },
 
   // Bank to bank: two facing banks with a gap of flat between them. Clear the
   // gap or come up short.
-  { type: 'bank', z0: 124, z1: 129, height: 1.3, halfWidth: 6.0, facing: 1 },
-  { type: 'bank', z0: 135, z1: 140, height: 1.3, halfWidth: 6.0, facing: -1 },
+  { type: 'bank', z0: 124, z1: 129, height: 1.0, halfWidth: 6.0, facing: 1 },
+  { type: 'bank', z0: 135, z1: 140, height: 1.0, halfWidth: 6.0, facing: -1 },
 
   // The big one.
-  { type: 'kicker', z0: 152, z1: 160.5, height: 2.05, halfWidth: 6.0, curve: 2.6 },
+  { type: 'kicker', z0: 152, z1: 160.5, height: 1.25, halfWidth: 6.0, curve: 2.6 },
 
   // A hip: two kickers side by side with a saddle between them, so the natural
   // launch is off to one side and the landing is not straight ahead. Rewards a
   // body spin. They share a lip line — staggering them would leave a notch at
   // the seam for a rider crossing the middle.
-  { type: 'kicker', z0: 176, z1: 183, height: 1.35, halfWidth: 4.0, curve: 2.2, offsetX: -3.4 },
-  { type: 'kicker', z0: 176, z1: 183, height: 1.35, halfWidth: 4.0, curve: 2.2, offsetX: 3.4 },
+  { type: 'kicker', z0: 176, z1: 183, height: 1.05, halfWidth: 4.0, curve: 2.2, offsetX: -3.4 },
+  { type: 'kicker', z0: 176, z1: 183, height: 1.05, halfWidth: 4.0, curve: 2.2, offsetX: 3.4 },
 
   // A rolling hump to finish, ridden over rather than off.
-  { type: 'roller', z0: 196, z1: 208, height: 1.0, halfWidth: 8.0 },
+  { type: 'roller', z0: 196, z1: 208, height: 0.8, halfWidth: 8.0 },
 ];
 
 const _n = new Vector3();

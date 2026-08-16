@@ -13,7 +13,13 @@ import {
 } from 'three';
 import Config from '../core/Config.js';
 import { groundHeight, isLip, runLength } from '../sim/Park.js';
-import { concreteTexture, concreteRoughness, concreteNormal } from './textures.js';
+import {
+  concreteTexture,
+  concreteRoughness,
+  concreteNormal,
+  woodTexture,
+  woodRoughness,
+} from './textures.js';
 
 /**
  * Visual skatepark, tessellated straight out of the same height function the
@@ -36,15 +42,7 @@ export default class ParkMesh extends Group {
     this.run = runLength();
     this.halfX = Config.park.laneHalfWidth + MARGIN;
 
-    this.material = new MeshStandardMaterial({
-      map: concreteTexture(),
-      roughnessMap: concreteRoughness(),
-      normalMap: concreteNormal(),
-      normalScale: new Vector2(0.32, 0.32),
-      color: 0xa9adb6,
-      roughness: 1.0,
-      metalness: 0.0,
-    });
+    this.material = this.buildGroundMaterial();
 
     this.shared = {
       ground: this.buildGroundGeometry(),
@@ -80,6 +78,92 @@ export default class ParkMesh extends Group {
     this.add(this.haze);
   }
 
+  // ----------------------------------------------------------- material ---
+
+  /**
+   * One material for the whole park surface, blending concrete on the flat into
+   * wood on everything raised.
+   *
+   * The blend comes from a per-vertex attribute rather than a second mesh, so
+   * it stays a single draw call and there is no seam to hide — the transition
+   * happens over the first few centimetres at the base of each feature.
+   *
+   * Only colour and roughness are blended. The wood deliberately reuses the
+   * concrete normal map: at the scale it is applied, fine tooth reads as grain
+   * just as well, and overriding three's normal chunk is far more fragile than
+   * overriding the two below for a difference nobody will see.
+   */
+  buildGroundMaterial() {
+    const material = new MeshStandardMaterial({
+      map: concreteTexture(),
+      roughnessMap: concreteRoughness(),
+      normalMap: concreteNormal(),
+      normalScale: new Vector2(0.32, 0.32),
+      color: 0xffffff,
+      roughness: 1.0,
+      metalness: 0.0,
+    });
+
+    const uniforms = {
+      uWoodMap: { value: woodTexture() },
+      uWoodRoughness: { value: woodRoughness() },
+      uConcreteTint: { value: new Color(0xa9adb6) },
+      uWoodTint: { value: new Color(0xb28a5f) },
+    };
+    material.userData.uniforms = uniforms;
+
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           attribute float featureBlend;
+           varying float vFeatureBlend;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           vFeatureBlend = featureBlend;`,
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform sampler2D uWoodMap;
+           uniform sampler2D uWoodRoughness;
+           uniform vec3 uConcreteTint;
+           uniform vec3 uWoodTint;
+           varying float vFeatureBlend;`,
+        )
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+           {
+             vec4 woodTexel = texture2D(uWoodMap, vMapUv * WOOD_UV_SCALE);
+             vec3 concreteCol = diffuseColor.rgb * uConcreteTint;
+             vec3 woodCol = woodTexel.rgb * uWoodTint;
+             diffuseColor.rgb = mix(concreteCol, woodCol, vFeatureBlend);
+           }`,
+        )
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+           {
+             float woodRough = texture2D(uWoodRoughness, vMapUv * WOOD_UV_SCALE).g;
+             roughnessFactor = mix(roughnessFactor, woodRough, vFeatureBlend);
+           }`,
+        );
+    };
+
+    // The wood tiles at its own rate; the concrete's repeat lives on its
+    // texture, but a second sampler sharing vMapUv has to scale in the shader.
+    material.defines = { WOOD_UV_SCALE: '1.0' };
+    return material;
+  }
+
   // ------------------------------------------------------------ geometry ---
 
   buildGroundGeometry() {
@@ -89,19 +173,25 @@ export default class ParkMesh extends Group {
 
     const positions = new Float32Array((nx + 1) * (nz + 1) * 3);
     const uvs = new Float32Array((nx + 1) * (nz + 1) * 2);
+    const blend = new Float32Array((nx + 1) * (nz + 1));
     const indices = [];
 
     let p = 0;
     let q = 0;
+    let b = 0;
     for (let j = 0; j <= nz; j++) {
       const z = (j / nz) * this.run;
       for (let i = 0; i <= nx; i++) {
         const x = -halfX + (i / nx) * halfX * 2;
+        const h = groundHeight(x, z);
         positions[p++] = x;
-        positions[p++] = groundHeight(x, z);
+        positions[p++] = h;
         positions[p++] = z;
         uvs[q++] = (x + halfX) / (halfX * 2);
         uvs[q++] = z / this.run;
+        // Anything raised is a built feature, and built features are wood. The
+        // ramp shrinks the transition to the first few centimetres of the climb.
+        blend[b++] = smoothstep(0.02, 0.14, h);
       }
     }
     for (let j = 0; j < nz; j++) {
@@ -116,6 +206,7 @@ export default class ParkMesh extends Group {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(positions, 3));
     g.setAttribute('uv', new BufferAttribute(uvs, 2));
+    g.setAttribute('featureBlend', new BufferAttribute(blend, 1));
     g.setIndex(indices);
     g.computeVertexNormals();
     return g;
@@ -214,6 +305,12 @@ export default class ParkMesh extends Group {
     for (const tile of this.tiles) tile.position.z = centre + tile.userData.index * this.run;
     this.haze.position.z = centre;
   }
+}
+
+function smoothstep(a, b, x) {
+  if (b <= a) return x >= b ? 1 : 0;
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 function makeRng(seed) {

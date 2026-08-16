@@ -635,6 +635,9 @@ export default class Game {
     } else if (this.state === State.AIR) {
       this.riderMesh.setPose(0.2, 0, 1);
     }
+    // The tail flame runs on real time, so it keeps flickering at its own rate
+    // while the world is in slow motion.
+    this.riderMesh.update(rd);
 
     // --- Camera ------------------------------------------------------------
     // The slam into the close-up is quicker than the pull back out: arriving

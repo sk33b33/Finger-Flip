@@ -28,13 +28,18 @@ export const Config = {
   },
 
   skater: {
-    maxSpeed: 13.5,
-    accel: 6.4,
-    brake: 9.0,
-    rollFriction: 0.35,
+    // Halved from the original 13.5. The forces that act on the speed are
+    // halved with it, so acceleration and braking still take the same time to
+    // do their job rather than becoming twitchy at the lower top end.
+    maxSpeed: 6.75,
+    accel: 3.2,
+    brake: 4.5,
+    rollFriction: 0.18,
+    // Deliberately NOT halved: the same yaw rate at half the speed halves the
+    // turning circle, which is what a slower roll should feel like.
     steerRate: 1.5, // rad/s at full lock
     steerSpeedFalloff: 0.55, // steering authority lost at top speed
-    height: 1.72,
+    height: 1.0, // read only by view/RiderMesh.js; the sim never uses it
   },
 
   pop: {
@@ -45,6 +50,9 @@ export const Config = {
     // Automatic pitch the board picks up off the pop (nose rises first).
     pitchKick: -0.35,
     forwardBoost: 1.1,
+    // Steepest slope a lip is allowed to convert into lift. A quarterpipe's
+    // transition approaches vertical, and without this it launches absurdly.
+    maxLiftSlope: 1.0,
     // Body spin. Whatever you are steering at the instant you pop is carried
     // into the air as rider rotation, the same way a skater winds up before an
     // ollie. It is deliberately not a finger control: the fingers have a job.
@@ -121,8 +129,9 @@ export const Config = {
   },
 
   camera: {
-    followDistance: 3.5,
-    followHeight: 1.05,
+    // Framed for a ~1m character, not a 1.7m one.
+    followDistance: 2.3,
+    followHeight: 0.78,
     followLag: 6.5, // higher = snappier
     fov: 64,
     // Close-up used during the trick, in spherical terms around the board. The
@@ -186,7 +195,7 @@ export const Config = {
     pitchPer360: 260, // per full pitch (impossibles are hard)
     airTimeBonusPerSecond: 90,
     heightBonusPerMetre: 70,
-    speedBonusPerMps: 12,
+    speedBonusPerMps: 24, // doubled with the halved top speed
     // Landing without ever catching the board is luck, not skill.
     catchBonus: 260,
     lateCatchBonus: 340, // caught in the last third of the flight

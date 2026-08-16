@@ -210,18 +210,18 @@ const TEMPLATE = /* html */ `
 </div>
 
 <div class="trick-panel js-trick-panel">
-  <div class="trick-panel__name js-trick-name">Ollie</div>
-  <div class="trick-panel__rows">
-    <div class="row"><span class="row__k">FLIP</span><span class="row__v js-flip">0°</span></div>
-    <div class="row"><span class="row__k">SHUV</span><span class="row__v js-shuv">0°</span></div>
-    <div class="row"><span class="row__k">PITCH</span><span class="row__v js-pitch">0°</span></div>
-    <div class="row row--hidden js-spin-row"><span class="row__k">SPIN</span><span class="row__v js-spin">0°</span></div>
-    <div class="row row--grab row--hidden js-grab-row"><span class="row__k">GRAB</span><span class="row__v js-grab">—</span></div>
-  </div>
-  <div class="quality">
-    <div class="quality__track"><div class="quality__fill js-quality-fill"></div></div>
+  <div class="trick-panel__top">
+    <div class="trick-panel__name js-trick-name">Ollie</div>
+    <div class="trick-panel__rows">
+      <div class="row"><span class="row__k">FLIP</span><span class="row__v js-flip">0°</span></div>
+      <div class="row"><span class="row__k">SHUV</span><span class="row__v js-shuv">0°</span></div>
+      <div class="row"><span class="row__k">PITCH</span><span class="row__v js-pitch">0°</span></div>
+      <div class="row row--hidden js-spin-row"><span class="row__k">SPIN</span><span class="row__v js-spin">0°</span></div>
+      <div class="row row--grab row--hidden js-grab-row"><span class="row__k">GRAB</span><span class="row__v js-grab">—</span></div>
+    </div>
     <div class="quality__label js-quality-label">LANDABLE</div>
   </div>
+  <div class="quality__track"><div class="quality__fill js-quality-fill"></div></div>
 </div>
 
 <button class="commit js-commit is-hidden" type="button">

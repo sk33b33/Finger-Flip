@@ -193,6 +193,98 @@ export function deckGraphic(w = 512, h = 1024) {
   return finish(c);
 }
 
+/**
+ * Wood for the ramps: planks running up the ramp, with grain, per-plank colour
+ * variation and darker seams between them.
+ *
+ * V runs along +Z, which on every feature in this park is the direction you
+ * ride, so the planks run up the ramp the way a built one would.
+ */
+export function woodTexture(size = 1024) {
+  const c = canvas(size, size);
+  const g = c.getContext('2d');
+  const rng = makeRng(613);
+
+  const PLANKS = 8;
+  const plankW = size / PLANKS;
+
+  for (let i = 0; i < PLANKS; i++) {
+    // Each plank is cut from a different board, so each gets its own tone.
+    const warmth = rng();
+    const l = 38 + warmth * 16;
+    g.fillStyle = `hsl(${26 + warmth * 10}, ${34 + warmth * 12}%, ${l}%)`;
+    g.fillRect(i * plankW, 0, plankW + 1, size);
+
+    // Grain: long streaks along the plank, denser near its edges.
+    g.save();
+    g.beginPath();
+    g.rect(i * plankW, 0, plankW, size);
+    g.clip();
+    for (let k = 0; k < 90; k++) {
+      const x = i * plankW + rng() * plankW;
+      const y0 = rng() * size;
+      const len = size * (0.25 + rng() * 0.6);
+      g.strokeStyle = rng() > 0.5 ? `rgba(60,36,18,${0.06 + rng() * 0.14})` : `rgba(224,186,132,${0.05 + rng() * 0.12})`;
+      g.lineWidth = 1 + rng() * 2.5;
+      g.beginPath();
+      g.moveTo(x, y0);
+      // A slight wander, so the grain is not a set of straight rules.
+      g.bezierCurveTo(x + (rng() - 0.5) * 10, y0 + len * 0.33, x + (rng() - 0.5) * 10, y0 + len * 0.66, x + (rng() - 0.5) * 6, y0 + len);
+      g.stroke();
+    }
+    // A few knots.
+    if (rng() > 0.55) {
+      const kx = i * plankW + plankW * (0.3 + rng() * 0.4);
+      const ky = rng() * size;
+      const kr = 4 + rng() * 7;
+      const grd = g.createRadialGradient(kx, ky, 0, kx, ky, kr);
+      grd.addColorStop(0, 'rgba(48,28,14,0.75)');
+      grd.addColorStop(0.6, 'rgba(78,48,24,0.4)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.arc(kx, ky, kr, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+
+    // Seam between planks.
+    g.fillStyle = 'rgba(24,14,7,0.55)';
+    g.fillRect(i * plankW - 1.5, 0, 3, size);
+  }
+
+  // Worn, lighter tracks where wheels have run.
+  g.globalAlpha = 0.07;
+  for (let i = 0; i < 3; i++) {
+    const x = size * (0.2 + i * 0.3);
+    const grd = g.createLinearGradient(x - 40, 0, x + 40, 0);
+    grd.addColorStop(0, 'rgba(255,226,180,0)');
+    grd.addColorStop(0.5, 'rgba(255,226,180,1)');
+    grd.addColorStop(1, 'rgba(255,226,180,0)');
+    g.fillStyle = grd;
+    g.fillRect(x - 40, 0, 80, size);
+  }
+  g.globalAlpha = 1;
+
+  return finish(c, { repeat: [14, 30] });
+}
+
+/** Wood is smoother than concrete, and smoother still along the worn tracks. */
+export function woodRoughness(size = 256) {
+  const c = canvas(size, size);
+  const g = c.getContext('2d');
+  const rng = makeRng(977);
+  const img = g.createImageData(size, size);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = 150 + rng() * 55;
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return finish(c, { srgb: false, repeat: [14, 30] });
+}
+
 /** Concrete for the park floor: mottled, with faint expansion joints. */
 export function concreteTexture(size = 1024) {
   const c = canvas(size, size);

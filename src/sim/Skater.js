@@ -139,8 +139,10 @@ export default class Skater {
     const up = P.minUp + (P.maxUp - P.minUp) * clamp01(charge);
     const fwd = this.heading(_h);
     const slope = groundSlopeZ(this.position.x, this.position.z);
-    // A ramp converts forward speed into vertical speed.
-    const rampLift = Math.max(0, slope) * this.speed * 0.62;
+    // A ramp converts forward speed into vertical speed. The slope term is
+    // capped because a transition steepens toward vertical near its lip, and an
+    // uncapped slope there multiplies into a launch that leaves the map.
+    const rampLift = Math.min(Math.max(0, slope), P.maxLiftSlope) * this.speed * 0.62;
 
     this.velocity.copy(fwd).multiplyScalar(this.speed + P.forwardBoost * charge);
     this.velocity.y = up + rampLift;

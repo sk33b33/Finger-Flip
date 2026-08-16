@@ -13,7 +13,8 @@ import FingerFlipController from '../src/sim/Fingers.js';
 import { recognise } from '../src/sim/Tricks.js';
 import { evaluateLanding, Quality } from '../src/sim/Landing.js';
 import Config from '../src/core/Config.js';
-import { groundHeight, groundNormal, groundSlopeZ, isLip } from '../src/sim/Park.js';
+import { groundHeight, groundNormal, groundSlopeZ, isLip, getFeatures } from '../src/sim/Park.js';
+import Skater from '../src/sim/Skater.js';
 
 const STANCE = new Quaternion(); // identity: board travelling down +Z, level
 const REAL_DT = 1 / 60;
@@ -228,8 +229,9 @@ test('a kicker face tilts its normal back at the rider', () => {
 test('the quarterpipe steepens toward its lip', () => {
   // A transition is defined by its curve: shallow at the bottom, near vertical
   // at the top. A constant slope would just be a bank.
-  const low = groundSlopeZ(0, 67);
-  const high = groundSlopeZ(0, 69);
+  // Sampled inside the transition, which spans z 66 to its lip just under 68.
+  const low = groundSlopeZ(0, 66.6);
+  const high = groundSlopeZ(0, 67.8);
   assert.ok(low > 0.1, `the base should already rise, got ${low.toFixed(2)}`);
   assert.ok(high > low * 2, `the lip should be far steeper: ${low.toFixed(2)} -> ${high.toFixed(2)}`);
 });
@@ -253,3 +255,101 @@ test('the hip has two peaks with a saddle between them', () => {
 function fmt(v) {
   return `pitch ${v.x.toFixed(2)} yaw ${v.y.toFixed(2)} roll ${v.z.toFixed(2)}`;
 }
+
+// --------------------------------------------------------------- flight ----
+
+/**
+ * Roll the rider up to a feature the way the game does — accelerating along the
+ * ground, decelerating against the slope — and launch them off its lip.
+ * Teleporting them to the lip at cruise speed would skip the climb, which is
+ * exactly the part that got hard when the rolling speed was halved.
+ */
+function runUpTo(lipZ, charge, { from = lipZ - 22 } = {}) {
+  const s = new Skater();
+  s.reset(from);
+  s.speed = Config.skater.maxSpeed;
+  const controls = { steer: 0, push: 1, brake: 0, charging: false };
+  const dt = 1 / 240;
+
+  let stalled = false;
+  for (let i = 0; i < 40000; i++) {
+    s.step(dt, controls);
+    if (s.position.z >= lipZ) break;
+    if (s.speed <= 0.6) {
+      stalled = true;
+      break;
+    }
+  }
+  const arrivedAt = s.speed;
+  if (stalled) return { stalled, arrivedAt, z: s.position.z };
+
+  s.takeOff(charge, 0);
+  for (let i = 0; i < 4000; i++) {
+    s.stepAir(dt);
+    if (s.checkTouchdown()) break;
+  }
+  return {
+    stalled: false,
+    arrivedAt,
+    land: s.position.z,
+    carried: s.position.z - lipZ,
+    airTime: s.airTime,
+    peak: s.peakHeight,
+  };
+}
+
+test('every feature is climbable at the rolling speed', () => {
+  // A rider at cruise can only rise v^2 / 2g before stalling. Halving the
+  // rolling speed halved that budget, which is what makes this a real
+  // constraint on the park rather than a note: build a feature taller than the
+  // budget and it stops being a ramp and becomes a wall.
+  const budget = (Config.skater.maxSpeed * Config.skater.maxSpeed) / (2 * -Config.sim.gravity);
+  for (const f of getFeatures()) {
+    assert.ok(
+      f.height < budget * 0.92,
+      `${f.type} at z=${f.z0} is ${f.height}m, but the rider can only climb ` +
+        `${budget.toFixed(2)}m at ${Config.skater.maxSpeed} m/s`,
+    );
+  }
+});
+
+test('the rider reaches every lip with speed left over', () => {
+  // The arithmetic above is necessary but not sufficient: rolling friction and
+  // the shape of the approach also cost speed.
+  for (const lip of [31.95, 54, 68, 112.3, 129, 160.45, 182.95]) {
+    const r = runUpTo(lip, 0.5);
+    assert.ok(!r.stalled, `stalled short of the lip at z=${lip} (reached ${r.z?.toFixed(1)})`);
+    assert.ok(
+      r.arrivedAt > 2.0,
+      `crawled onto the lip at z=${lip} with only ${r.arrivedAt.toFixed(2)} m/s`,
+    );
+  }
+});
+
+test('the rider still clears the bank-to-bank gap at the halved rolling speed', () => {
+  // Bank one's lip is at z=129 and bank two's face starts at 133.6. Halving the
+  // rolling speed halved the horizontal carry, so this is the feature most at
+  // risk from that change.
+  const weak = runUpTo(129, 0.35);
+  const full = runUpTo(129, 1.0);
+  assert.ok(
+    weak.land > 133.6,
+    `a weak pop should still reach the far bank: landed at ${weak.land.toFixed(1)}`,
+  );
+  assert.ok(full.carried > weak.carried, 'a full pop should carry further than a weak one');
+});
+
+test('halving the rolling speed did not collapse hangtime', () => {
+  // Air time comes mostly from the pop, not the ramp, so it should barely have
+  // moved. If this drops, the trick window has quietly shrunk with it.
+  const big = runUpTo(160.45, 1.0);
+  assert.ok(big.airTime > 1.0, `expected real hangtime, got ${big.airTime.toFixed(2)}s`);
+  assert.ok(big.peak > 1.6, `expected real height, got ${big.peak.toFixed(2)}m`);
+});
+
+test('a transition cannot launch the rider out of the park', () => {
+  // A quarterpipe steepens toward vertical, and an uncapped slope-to-lift term
+  // there multiplied into a 10m launch. The cap is what keeps it a skatepark.
+  const quarter = runUpTo(68, 1.0);
+  assert.ok(quarter.peak < 4.5, `quarterpipe launched to ${quarter.peak.toFixed(1)}m`);
+});

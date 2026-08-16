@@ -2,7 +2,7 @@
 
 A 3D skateboarding game where you flip the board with **a finger from each hand**.
 
-You roll in at speed. You pop off a lip. Then the world drops into slow motion,
+You roll in. You pop off a lip. Then the world drops into slow motion,
 the camera slams in until the deck fills the screen, and the trick is entirely
 in your hands: two fingers on the board, working the deck until it comes round
 the way you want it, and a catch to stop it flat before you land.
@@ -124,6 +124,14 @@ never becomes dead time. Set `Config.nail.idleTimeScale` equal to
   `h(x, z)`. Three copies of the tile cycle around the rider for an endless run.
   The constraint is real: anything that cannot be written as a height cannot
   exist, which is why there are no grind rails.
+
+  Feature heights are bounded by what the rider can actually climb — a rider at
+  cruise can only rise `v² / 2g` before stalling, so a taller feature is not a
+  ramp, it is a wall you grind to a halt against. There is a test for it, and it
+  is the constraint that bit when the rolling speed was halved.
+- **Wood on the ramps, concrete on the flat**, blended in one draw call by a
+  per-vertex weight taken from the height itself. Raised ground is built
+  structure; flat ground is the lot it was built on.
 - **The trick shot fits itself to the viewport.** The distance a finger travels
   to flick off a rail is measured in screen pixels, so the camera costs both
   candidate framings against the frame and picks the cheaper, and the deck's
@@ -163,6 +171,15 @@ Nothing gameplay-affecting is a magic number anywhere else.
 
 ## Notes
 
-Original code and original assets throughout. The slow-motion trick-control
-concept is inspired by the feel of skateboarding games of the mid-2000s; no
-code, assets, audio or animation has been taken from any of them.
+All code, geometry, textures and audio here are original and generated at
+runtime — there are no asset files in this repository. The slow-motion
+trick-control concept is inspired by the feel of skateboarding games of the
+mid-2000s; no code, assets, audio or animation has been taken from any of them.
+
+**One exception, stated plainly:** the rider is modelled on Charmander, which is
+a character owned by Nintendo, Game Freak and The Pokémon Company. The mesh is
+built from scratch in `view/RiderMesh.js` rather than copied from anywhere, but
+the design is theirs. That is fine for a personal prototype and is not fine for
+anything published or sold — swap `RiderMesh.js` for an original character
+first. Nothing else in the project depends on who the rider is: the file is
+driven entirely through `setPose` / `setFade` / `setBailPose`.

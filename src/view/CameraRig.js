@@ -162,12 +162,12 @@ export default class CameraRig {
       .addScaledVector(back, C.followDistance)
       .add(_tmp2.set(0, C.followHeight, 0));
     // Never let the chase camera dip into a ramp.
-    const floor = groundHeight(outPos.x, outPos.z) + 0.85;
+    const floor = groundHeight(outPos.x, outPos.z) + 0.7;
     if (outPos.y < floor) outPos.y = floor;
     // Aim low and not too far ahead: it keeps the board in frame under the
     // rider's feet, which is the thing the player is about to be flipping.
-    outLook.copy(skater.position).add(_tmp2.set(0, 0.72, 0));
-    outLook.addScaledVector(_tmp.set(Math.sin(skater.yaw), 0, Math.cos(skater.yaw)), 2.2);
+    outLook.copy(skater.position).add(_tmp2.set(0, 0.55, 0));
+    outLook.addScaledVector(_tmp.set(Math.sin(skater.yaw), 0, Math.cos(skater.yaw)), 1.2);
   }
 
   /**

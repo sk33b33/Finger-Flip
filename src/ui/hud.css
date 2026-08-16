@@ -154,51 +154,76 @@ body {
 
 /* ------------------------------------------------------------ trick panel */
 
+/* A slim translucent strip across the top. It has to sit between the score at
+   top-left and the speed at top-right without ever touching either, and it has
+   to stay readable over a bright sky and over dark concrete alike — hence the
+   blur rather than a solid fill. */
 .trick-panel {
   position: absolute;
-  top: 50%;
-  right: max(24px, env(safe-area-inset-right));
-  transform: translateY(-50%) translateX(18px);
-  width: clamp(154px, 20vw, 196px);
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  backdrop-filter: blur(14px);
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  width: min(460px, calc(100vw - 260px));
+  padding: 7px 14px 8px;
+  border-radius: 12px;
+  background: rgba(10, 12, 18, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
   opacity: 0;
   pointer-events: none;
   transition:
-    opacity 0.22s ease,
-    transform 0.28s cubic-bezier(0.2, 0.9, 0.25, 1);
+    opacity 0.2s ease,
+    transform 0.26s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 .hud.is-trick .trick-panel {
   opacity: 1;
-  transform: translateY(-50%) translateX(0);
+  transform: translateX(-50%) translateY(0);
+}
+
+.trick-panel__top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 .trick-panel__name {
-  font-size: clamp(15px, 2.1vw, 19px);
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  margin-bottom: 10px;
-  line-height: 1.15;
+  line-height: 1.1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 44%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The readouts sit inline and push right, so the name can grow leftward as the
+   trick gets a longer call without the figures jumping around. */
+.trick-panel__rows {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-left: auto;
 }
 
 .row {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
-  padding: 2px 0;
+  gap: 3px;
 }
 .row__k {
-  font-size: 9.5px;
-  letter-spacing: 0.18em;
+  font-size: 8px;
+  letter-spacing: 0.14em;
   color: var(--dim);
   font-weight: 700;
 }
 .row__v {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
 }
 .row--hidden {
@@ -209,15 +234,10 @@ body {
   color: var(--good);
 }
 
-.quality {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--edge);
-}
 .quality__track {
-  height: 5px;
+  height: 3px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.11);
   overflow: hidden;
 }
 .quality__fill {
@@ -229,11 +249,12 @@ body {
     background 0.2s linear;
 }
 .quality__label {
-  margin-top: 6px;
-  font-size: 9.5px;
-  letter-spacing: 0.16em;
+  font-size: 8px;
+  letter-spacing: 0.14em;
   font-weight: 700;
   color: var(--dim);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------------------- commit button */
@@ -303,7 +324,7 @@ body {
 .banner {
   position: absolute;
   left: 50%;
-  top: 24%;
+  top: 38%;
   transform: translate(-50%, -14px) scale(0.96);
   text-align: center;
   opacity: 0;
@@ -470,44 +491,34 @@ body {
 
 /* Portrait phones: a side panel eats a third of a narrow screen, and the deck
    is framed vertically there, so the readout belongs across the top instead. */
-@media (max-width: 560px) and (orientation: portrait) {
-  /* Keep the prompt clear of the deck, which fills the middle of the screen. */
-  .prompt {
-    top: 15%;
-  }
+/* Narrow screens: the score and speed leave very little room either side, so
+   the strip drops below them and takes the full width instead. */
+@media (max-width: 620px) {
   .trick-panel {
-    top: auto;
-    bottom: 84px;
-    left: max(16px, env(safe-area-inset-left));
-    right: max(16px, env(safe-area-inset-right));
+    top: calc(max(14px, env(safe-area-inset-top)) + 52px);
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
     width: auto;
-    transform: translateY(14px);
-    padding: 10px 14px;
+    transform: translateX(0) translateY(-10px);
+    padding: 6px 11px 7px;
   }
   .hud.is-trick .trick-panel {
-    transform: translateY(0);
-  }
-  .trick-panel__rows {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 16px;
+    transform: translateX(0) translateY(0);
   }
   .trick-panel__name {
-    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .trick-panel__rows {
+    gap: 7px;
+  }
+  /* And the prompt clears the strip rather than sitting under it. */
+  .prompt {
+    top: 26%;
   }
 }
 
 /* Landscape phones: the trick panel would collide with the thumbs. */
 @media (max-height: 460px) {
-  .trick-panel {
-    top: auto;
-    bottom: 12px;
-    transform: none;
-    padding: 10px 12px;
-  }
-  .hud.is-trick .trick-panel {
-    transform: none;
-  }
   .commit {
     bottom: 12px;
     left: auto;
