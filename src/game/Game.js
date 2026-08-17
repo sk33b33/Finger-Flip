@@ -11,10 +11,12 @@ import FingerFlipController from '../sim/Fingers.js';
 import { recognise, describeSpin, fullName, quantiseBodySpin } from '../sim/Tricks.js';
 import { evaluateLanding, previewLanding, Quality } from '../sim/Landing.js';
 import GrabTracker from '../sim/Grabs.js';
-import { groundHeight, groundNormal, isLip } from '../sim/Park.js';
+import { groundHeight, groundNormal, isLip, setLayout, getLayout } from '../sim/Park.js';
 
 import ScoreSystem, { NailMeter } from './Score.js';
 import FingerMapper from './FingerMapper.js';
+import Profile from './Profile.js';
+import { dailyChallenges, scoreEvent } from './Events.js';
 
 import Stage from '../view/Stage.js';
 import PostFX from '../view/PostFX.js';
@@ -75,6 +77,9 @@ export default class Game {
     this.mapper = new FingerMapper(this.input, this.fingers);
     this.score = new ScoreSystem();
     this.meter = new NailMeter();
+    this.profile = new Profile();
+    this.today = dailyChallenges();
+    this.bankedAirTime = 0;
 
     // --- presentation -----------------------------------------------------
     this.postFX = new PostFX(this.stage.renderer);
@@ -117,6 +122,11 @@ export default class Game {
     this.lastTrick = { name: 'Ollie' };
     this.controls = { steer: 0, push: 1, brake: 0, charging: false };
 
+    // Whatever was chosen last time. Applied after everything is built, since
+    // both of these swap objects that are already in the scene graph.
+    if (this.profile.data.mapId) this.setMap(this.profile.data.mapId);
+    if (this.profile.data.characterId) this.setCharacter(this.profile.data.characterId);
+
     this.resetRun();
     this._frame = this._frame.bind(this);
   }
@@ -130,6 +140,49 @@ export default class Game {
     this.resetRun();
     this.audio.start();
     this.hud.setHint('H for controls');
+  }
+
+  /**
+   * Switch parks. The sim's height function and the visual mesh both come off
+   * the same layout, so they have to move together or you land on the park you
+   * are no longer looking at.
+   */
+  setMap(id) {
+    const layout = setLayout(id);
+    this.parkMesh.rebuild();
+    this.resetRun();
+    return layout;
+  }
+
+  get map() {
+    return getLayout();
+  }
+
+  /**
+   * Swap riders. Every character comes off the same rig with the same API, so
+   * the only thing that has to be careful here is not leaking the old one's
+   * geometry and materials — a roster you can click through is a roster you can
+   * click through fifty times.
+   */
+  setCharacter(id) {
+    if (this.riderMesh.character?.id === id) return this.riderMesh.character;
+
+    const old = this.riderMesh;
+    this.stage.scene.remove(old);
+    old.traverse((o) => {
+      if (o.isMesh) o.geometry.dispose();
+    });
+    for (const m of old.allMaterials) m.dispose();
+
+    this.riderMesh = new RiderMesh(id);
+    this.riderMesh.position.copy(old.position);
+    this.riderMesh.quaternion.copy(old.quaternion);
+    this.stage.scene.add(this.riderMesh);
+    return this.riderMesh.character;
+  }
+
+  get character() {
+    return this.riderMesh.character;
   }
 
   run() {
@@ -474,6 +527,7 @@ export default class Game {
     this.flash = landing.quality === Quality.BAIL ? 0.28 : 0.14 + landing.score * 0.2;
 
     const result = this.score.award(trick, landing, flight, hands, { grab, bodyTurns, name });
+    this.recordProgress({ type: 'trick', breakdown: result, mapId: this.map.id });
 
     if (landing.quality === Quality.BAIL) {
       this.bail({ ...trick, name }, landing);
@@ -545,6 +599,32 @@ export default class Game {
     if (banked > 0) {
       this.audio.reward(Math.min(5, 1 + Math.floor(banked / 1500)));
       this.hud.showPrompt(`BANKED +${Math.round(banked).toLocaleString('en-US')}`, 1.5);
+      this.profile.recordRun({ banked, mapId: this.map.id, airTime: this.bankedAirTime });
+      this.recordProgress({ type: 'run', banked, mapId: this.map.id });
+      this.bankedAirTime = 0;
+    }
+  }
+
+  /**
+   * Feed one event to the profile and to today's challenges.
+   *
+   * Both read the same breakdown ScoreSystem already produced, which is why
+   * neither of them has to know anything about the game — and why this is the
+   * only place either of them is touched.
+   */
+  recordProgress(ev) {
+    if (ev.type === 'trick') {
+      this.profile.recordTrick(ev.breakdown, ev.mapId);
+      this.bankedAirTime += ev.breakdown.airTime || 0;
+    }
+    for (const moved of scoreEvent(ev, this.today)) {
+      const before = this.profile.eventProgress(moved.id);
+      const after = this.profile.advanceEvent(moved.id, moved.amount, moved.goal);
+      if (after.done && !before.done) {
+        const challenge = this.today.find((c) => c.id === moved.id);
+        this.hud.showPrompt(`CHALLENGE: ${challenge.name.toUpperCase()}`, 2.2);
+        this.audio.reward(5);
+      }
     }
   }
 

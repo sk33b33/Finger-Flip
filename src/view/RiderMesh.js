@@ -10,14 +10,19 @@ import {
   MathUtils,
 } from 'three';
 import Config from '../core/Config.js';
+import { CHARACTERS, findCharacter, DEFAULT_CHARACTER } from './Characters.js';
 
 /**
- * The rider: red suit, black panels, two katanas crossed on his back.
+ * The rider.
  *
- * Built procedurally from primitives like everything else here. The class name
- * and its whole API are unchanged, because `game/Game.js` drives it by that
- * contract: setPose, setFade, setBailPose, update, and position/quaternion
- * written from outside. Feet stay at local y = 0 so the board sits under them.
+ * Built procedurally from primitives like everything else here. One rig serves
+ * the whole roster: the skeleton, the stance and every pose are shared, and a
+ * character is a palette, a head, something on the back and a build. See
+ * view/Characters.js.
+ *
+ * The class API is fixed, because `game/Game.js` drives it by that contract:
+ * setPose, setFade, setBailPose, update, and position/quaternion written from
+ * outside. Feet stay at local y = 0 so the board sits under them.
  *
  * ## The stance
  *
@@ -59,8 +64,17 @@ const FOOT_SPREAD = 0.2;
 const REST_BEND = 0.2;
 
 export default class RiderMesh extends Group {
-  constructor() {
+  /** @param {object|string} character a spec from Characters.js, or its id */
+  constructor(character = DEFAULT_CHARACTER) {
     super();
+
+    const spec =
+      (typeof character === 'string' ? findCharacter(character) : character) || CHARACTERS[0];
+    this.character = spec;
+    const P = spec.palette;
+    // Everything on the rig is sized in radii, so one number changes the build.
+    const B = spec.bulk ?? 1;
+    const r = (v) => v * B;
 
     // Every material is transparent from construction. Flipping `transparent`
     // on a live material does not take effect without forcing a recompile, and
@@ -68,13 +82,13 @@ export default class RiderMesh extends Group {
     const mat = (color, roughness, extra = {}) =>
       new MeshStandardMaterial({ color, roughness, transparent: true, opacity: 1, ...extra });
 
-    const suit = mat(0x9c1c22, 0.58);
-    const suitDark = mat(0x6b1216, 0.6);
-    const black = mat(0x1b1c20, 0.62);
-    const leather = mat(0x7c5432, 0.72);
-    const buckle = mat(0xb02028, 0.4, { metalness: 0.3 });
-    const steel = mat(0xc9ced8, 0.24, { metalness: 0.95 });
-    const lens = mat(0xf4f4f2, 0.34);
+    const suit = mat(P.suit, 0.58);
+    const suitDark = mat(P.suitDark, 0.6);
+    const black = mat(P.trim, 0.62);
+    const leather = mat(P.leather, 0.72);
+    const buckle = mat(P.accent, 0.4, { metalness: 0.3 });
+    const steel = mat(P.metal, 0.24, { metalness: 0.95 });
+    const lens = mat(P.lens, 0.34);
 
     this.materials = { suit, suitDark, black, leather, buckle, steel, lens };
     this.allMaterials = Object.values(this.materials);
@@ -97,18 +111,18 @@ export default class RiderMesh extends Group {
       hip.rotation.y = STANCE_YAW;
       this.leanGroup.add(hip);
 
-      const thigh = new Mesh(new CapsuleGeometry(0.075, H * 0.19, 4, 10), suit);
+      const thigh = new Mesh(new CapsuleGeometry(r(0.075), H * 0.19, 4, 10), suit);
       thigh.position.y = -H * 0.12;
       thigh.castShadow = true;
       hip.add(thigh);
 
       // Black panel down the outside of the thigh.
-      const panel = new Mesh(new CapsuleGeometry(0.052, H * 0.15, 3, 8), black);
+      const panel = new Mesh(new CapsuleGeometry(r(0.052), H * 0.15, 3, 8), black);
       panel.position.set(side * 0.045, -H * 0.12, 0.008);
       hip.add(panel);
 
       // Thigh strap.
-      const strap = new Mesh(new TorusGeometry(0.078, 0.011, 6, 16), black);
+      const strap = new Mesh(new TorusGeometry(r(0.078), 0.011, 6, 16), black);
       strap.rotation.x = Math.PI / 2;
       strap.position.y = -H * 0.2;
       hip.add(strap);
@@ -117,7 +131,7 @@ export default class RiderMesh extends Group {
       knee.position.y = -H * 0.25;
       hip.add(knee);
 
-      const shin = new Mesh(new CapsuleGeometry(0.06, H * 0.17, 4, 10), suit);
+      const shin = new Mesh(new CapsuleGeometry(r(0.06), H * 0.17, 4, 10), suit);
       shin.position.y = -H * 0.11;
       shin.castShadow = true;
       knee.add(shin);
@@ -126,7 +140,7 @@ export default class RiderMesh extends Group {
       ankle.position.y = -H * 0.23;
       knee.add(ankle);
 
-      const boot = new Mesh(new CapsuleGeometry(0.065, H * 0.06, 4, 10), black);
+      const boot = new Mesh(new CapsuleGeometry(r(0.065), H * 0.06, 4, 10), black);
       boot.position.y = 0.03;
       ankle.add(boot);
 
@@ -148,7 +162,7 @@ export default class RiderMesh extends Group {
     this.torso.rotation.y = STANCE_YAW;
     this.leanGroup.add(this.torso);
 
-    const chest = new Mesh(new CapsuleGeometry(0.16, H * 0.21, 5, 14), suit);
+    const chest = new Mesh(new CapsuleGeometry(r(0.16), H * 0.21, 5, 14), suit);
     chest.position.y = H * 0.12;
     chest.scale.set(1, 1, 0.82);
     chest.castShadow = true;
@@ -156,14 +170,14 @@ export default class RiderMesh extends Group {
 
     // Black side panels: after the mask, the suit's most recognisable shape.
     for (const side of [-1, 1]) {
-      const flank = new Mesh(new CapsuleGeometry(0.066, H * 0.17, 4, 10), black);
-      flank.position.set(side * 0.122, H * 0.13, -0.01);
+      const flank = new Mesh(new CapsuleGeometry(r(0.066), H * 0.17, 4, 10), black);
+      flank.position.set(side * r(0.122), H * 0.13, -0.01);
       flank.scale.set(1, 1, 0.8);
       this.torso.add(flank);
     }
 
     // ------------------------------------------------------------ belt ---
-    const belt = new Mesh(new CylinderGeometry(0.158, 0.162, 0.062, 18), leather);
+    const belt = new Mesh(new CylinderGeometry(r(0.158), r(0.162), 0.062, 18), leather);
     belt.scale.set(1, 1, 0.84);
     belt.position.y = H * 0.015;
     this.torso.add(belt);
@@ -185,40 +199,19 @@ export default class RiderMesh extends Group {
     this.head.position.y = H * 0.36;
     this.torso.add(this.head);
 
-    const skull = new Mesh(new SphereGeometry(0.118, 18, 16), suit);
-    skull.scale.set(0.94, 1.1, 1);
-    skull.castShadow = true;
-    this.head.add(skull);
-
-    const jaw = new Mesh(new SphereGeometry(0.098, 14, 12), suit);
-    jaw.scale.set(0.88, 0.72, 0.94);
-    jaw.position.set(0, -0.058, 0.012);
-    this.head.add(jaw);
-
-    // The mask: black patches with white lenses set into them.
-    for (const side of [-1, 1]) {
-      const patch = new Mesh(new SphereGeometry(0.055, 14, 12), black);
-      patch.scale.set(0.86, 0.78, 0.42);
-      patch.position.set(side * 0.052, 0.016, 0.094);
-      this.head.add(patch);
-
-      const eye = new Mesh(new SphereGeometry(0.036, 12, 10), lens);
-      eye.scale.set(0.9, 0.72, 0.32);
-      eye.position.set(side * 0.052, 0.018, 0.114);
-      this.head.add(eye);
-    }
+    this.buildHead(spec.head);
 
     // ------------------------------------------------------------ arms ---
     this.arms = [];
     for (const side of [-1, 1]) {
       const shoulder = new Group();
-      shoulder.position.set(side * 0.185, H * 0.25, 0);
+      shoulder.position.set(side * r(0.185), H * 0.25, 0);
       this.torso.add(shoulder);
 
-      const cap = new Mesh(new SphereGeometry(0.068, 12, 10), black);
+      const cap = new Mesh(new SphereGeometry(r(0.068), 12, 10), black);
       shoulder.add(cap);
 
-      const upper = new Mesh(new CapsuleGeometry(0.052, H * 0.13, 4, 10), black);
+      const upper = new Mesh(new CapsuleGeometry(r(0.052), H * 0.13, 4, 10), black);
       upper.position.y = -H * 0.085;
       upper.castShadow = true;
       shoulder.add(upper);
@@ -227,57 +220,236 @@ export default class RiderMesh extends Group {
       elbow.position.y = -H * 0.17;
       shoulder.add(elbow);
 
-      const fore = new Mesh(new CapsuleGeometry(0.045, H * 0.12, 4, 10), suit);
+      const fore = new Mesh(new CapsuleGeometry(r(0.045), H * 0.12, 4, 10), suit);
       fore.position.y = -H * 0.075;
       fore.castShadow = true;
       elbow.add(fore);
 
-      const glove = new Mesh(new CapsuleGeometry(0.05, 0.05, 4, 10), black);
+      const glove = new Mesh(new CapsuleGeometry(r(0.05), 0.05, 4, 10), black);
       glove.position.y = -H * 0.155;
       elbow.add(glove);
 
       this.arms.push({ shoulder, elbow, side });
     }
 
-    // ------------------------------------------- katanas across the back ---
-    // The chase camera looks straight at his back, so this is the detail that
-    // does the most work for the least geometry.
+    // ------------------------------------------------ carried on the back ---
+    // The chase camera looks straight at the rider's back, so whatever is on it
+    // is the detail that does the most work for the least geometry — and the
+    // fastest way to tell one character from another at a distance.
     this.rig = new Group();
     this.rig.position.set(0, H * 0.17, -0.105);
     this.torso.add(this.rig);
-
-    for (const side of [-1, 1]) {
-      const sword = new Group();
-      sword.rotation.z = side * 0.55; // crossed, each tilted across the spine
-      sword.rotation.x = -0.3; // laid back against the shoulder blades
-      this.rig.add(sword);
-
-      const scabbard = new Mesh(new CylinderGeometry(0.021, 0.017, 0.62, 10), black);
-      scabbard.position.y = -0.04;
-      scabbard.castShadow = true;
-      sword.add(scabbard);
-
-      const guard = new Mesh(new CylinderGeometry(0.038, 0.038, 0.012, 12), steel);
-      guard.position.y = 0.28;
-      sword.add(guard);
-
-      const grip = new Mesh(new CylinderGeometry(0.017, 0.019, 0.17, 10), black);
-      grip.position.y = 0.37;
-      sword.add(grip);
-
-      const pommel = new Mesh(new CylinderGeometry(0.021, 0.021, 0.018, 10), steel);
-      pommel.position.y = 0.46;
-      sword.add(pommel);
-
-      // The harness strap carrying it, crossing to the opposite shoulder.
-      const strap = new Mesh(new BoxGeometry(0.038, 0.5, 0.014), black);
-      strap.position.set(side * 0.07, 0.06, 0.02);
-      strap.rotation.z = side * 0.5;
-      this.rig.add(strap);
-    }
+    this.buildBack(spec.back);
 
     this.setPose(0, 0, 0);
     this.setFade(0);
+  }
+
+  // --------------------------------------------------------------- head ---
+
+  /**
+   * Heads share a skull and differ above it, because the head is small on
+   * screen for all but the bail — silhouette is the only thing that reads.
+   */
+  buildHead(kind) {
+    const { suit, suitDark, black, leather, buckle, steel, lens } = this.materials;
+
+    const skull = new Mesh(new SphereGeometry(0.118, 18, 16), kind === 'mask' ? suit : suitDark);
+    skull.scale.set(0.94, 1.1, 1);
+    skull.castShadow = true;
+    this.head.add(skull);
+
+    const jaw = new Mesh(new SphereGeometry(0.098, 14, 12), kind === 'mask' ? suit : suitDark);
+    jaw.scale.set(0.88, 0.72, 0.94);
+    jaw.position.set(0, -0.058, 0.012);
+    this.head.add(jaw);
+
+    if (kind === 'mask') {
+      // Black patches with pale lenses set into them.
+      for (const side of [-1, 1]) {
+        const patch = new Mesh(new SphereGeometry(0.055, 14, 12), black);
+        patch.scale.set(0.86, 0.78, 0.42);
+        patch.position.set(side * 0.052, 0.016, 0.094);
+        this.head.add(patch);
+
+        const eye = new Mesh(new SphereGeometry(0.036, 12, 10), lens);
+        eye.scale.set(0.9, 0.72, 0.32);
+        eye.position.set(side * 0.052, 0.018, 0.114);
+        this.head.add(eye);
+      }
+      return;
+    }
+
+    if (kind === 'helmet') {
+      // A full-face lid: shell over the skull, one wide visor across the front.
+      const shell = new Mesh(new SphereGeometry(0.132, 18, 16), suit);
+      shell.scale.set(1, 1.02, 1.04);
+      shell.position.y = 0.012;
+      shell.castShadow = true;
+      this.head.add(shell);
+
+      const visor = new Mesh(new SphereGeometry(0.118, 18, 14), lens);
+      visor.scale.set(0.94, 0.5, 0.62);
+      visor.position.set(0, 0.006, 0.062);
+      this.head.add(visor);
+
+      const chin = new Mesh(new BoxGeometry(0.15, 0.05, 0.1), black);
+      chin.position.set(0, -0.082, 0.052);
+      this.head.add(chin);
+      return;
+    }
+
+    if (kind === 'hood') {
+      // Hood up: a cowl swallowing the skull, with the face left in shadow.
+      const cowl = new Mesh(new SphereGeometry(0.145, 16, 14), suit);
+      cowl.scale.set(1, 1.02, 1.06);
+      cowl.position.set(0, 0.014, -0.016);
+      cowl.castShadow = true;
+      this.head.add(cowl);
+
+      // The opening: a dark disc set into the front of the cowl.
+      const opening = new Mesh(new SphereGeometry(0.088, 14, 12), black);
+      opening.scale.set(0.94, 1.0, 0.36);
+      opening.position.set(0, -0.004, 0.098);
+      this.head.add(opening);
+
+      for (const side of [-1, 1]) {
+        const glint = new Mesh(new SphereGeometry(0.019, 10, 8), lens);
+        glint.scale.set(1, 0.62, 0.5);
+        glint.position.set(side * 0.038, 0.006, 0.118);
+        this.head.add(glint);
+      }
+
+      // The bunched fabric where it gathers at the shoulders.
+      const drape = new Mesh(new SphereGeometry(0.13, 12, 10), suitDark);
+      drape.scale.set(1.1, 0.5, 0.86);
+      drape.position.set(0, -0.108, -0.03);
+      this.head.add(drape);
+      return;
+    }
+
+    // cap — backwards, which is the whole point of a cap on a skateboard.
+    const crown = new Mesh(new SphereGeometry(0.124, 16, 14), suit);
+    crown.scale.set(1, 0.82, 1);
+    crown.position.y = 0.026;
+    crown.castShadow = true;
+    this.head.add(crown);
+
+    const peak = new Mesh(new BoxGeometry(0.14, 0.018, 0.11), suit);
+    peak.position.set(0, 0.012, -0.14);
+    peak.rotation.x = -0.16;
+    this.head.add(peak);
+
+    const band = new Mesh(new CylinderGeometry(0.125, 0.125, 0.026, 16), buckle);
+    band.position.y = -0.012;
+    this.head.add(band);
+
+    for (const side of [-1, 1]) {
+      const eye = new Mesh(new SphereGeometry(0.022, 10, 8), lens);
+      eye.scale.set(1, 0.68, 0.5);
+      eye.position.set(side * 0.042, -0.024, 0.096);
+      this.head.add(eye);
+    }
+  }
+
+  // --------------------------------------------------------------- back ---
+
+  buildBack(kind) {
+    const { suit, suitDark, black, leather, buckle, steel } = this.materials;
+
+    if (kind === 'katanas') {
+      for (const side of [-1, 1]) {
+        const sword = new Group();
+        sword.rotation.z = side * 0.55; // crossed, each tilted across the spine
+        sword.rotation.x = -0.3; // laid back against the shoulder blades
+        this.rig.add(sword);
+
+        const scabbard = new Mesh(new CylinderGeometry(0.021, 0.017, 0.62, 10), black);
+        scabbard.position.y = -0.04;
+        scabbard.castShadow = true;
+        sword.add(scabbard);
+
+        const guard = new Mesh(new CylinderGeometry(0.038, 0.038, 0.012, 12), steel);
+        guard.position.y = 0.28;
+        sword.add(guard);
+
+        const grip = new Mesh(new CylinderGeometry(0.017, 0.019, 0.17, 10), black);
+        grip.position.y = 0.37;
+        sword.add(grip);
+
+        const pommel = new Mesh(new CylinderGeometry(0.021, 0.021, 0.018, 10), steel);
+        pommel.position.y = 0.46;
+        sword.add(pommel);
+
+        // The harness strap carrying it, crossing to the opposite shoulder.
+        const strap = new Mesh(new BoxGeometry(0.038, 0.5, 0.014), black);
+        strap.position.set(side * 0.07, 0.06, 0.02);
+        strap.rotation.z = side * 0.5;
+        this.rig.add(strap);
+      }
+      return;
+    }
+
+    if (kind === 'pack') {
+      const body = new Mesh(new BoxGeometry(0.26, 0.34, 0.13), black);
+      body.position.set(0, 0.06, -0.05);
+      body.castShadow = true;
+      this.rig.add(body);
+
+      const lid = new Mesh(new BoxGeometry(0.27, 0.09, 0.14), suitDark);
+      lid.position.set(0, 0.2, -0.052);
+      this.rig.add(lid);
+
+      const buckleBox = new Mesh(new BoxGeometry(0.05, 0.035, 0.02), buckle);
+      buckleBox.position.set(0, 0.14, -0.118);
+      this.rig.add(buckleBox);
+
+      for (const side of [-1, 1]) {
+        const strap = new Mesh(new BoxGeometry(0.042, 0.44, 0.016), black);
+        strap.position.set(side * 0.085, 0.08, 0.055);
+        strap.rotation.z = side * 0.12;
+        this.rig.add(strap);
+      }
+      return;
+    }
+
+    if (kind === 'deck') {
+      // A spare board slung across the back, which is what half a skatepark
+      // looks like from behind at any given moment.
+      const deck = new Mesh(new BoxGeometry(0.19, 0.72, 0.022), suitDark);
+      deck.rotation.z = 0.42;
+      deck.position.set(0, 0.06, -0.055);
+      deck.castShadow = true;
+      this.rig.add(deck);
+
+      const stripe = new Mesh(new BoxGeometry(0.19, 0.1, 0.024), buckle);
+      stripe.rotation.z = 0.42;
+      stripe.position.set(0.05, -0.05, -0.056);
+      this.rig.add(stripe);
+
+      for (const along of [-0.19, 0.19]) {
+        const truck = new Mesh(new CylinderGeometry(0.016, 0.016, 0.13, 8), steel);
+        truck.rotation.z = Math.PI / 2 + 0.42;
+        truck.position.set(0.06 - Math.sin(0.42) * along, 0.06 + Math.cos(0.42) * along, -0.03);
+        this.rig.add(truck);
+      }
+
+      const strap = new Mesh(new BoxGeometry(0.04, 0.52, 0.014), leather);
+      strap.position.set(-0.02, 0.06, 0.03);
+      strap.rotation.z = -0.34;
+      this.rig.add(strap);
+      return;
+    }
+
+    // none — bare back, but not an empty one: a seam and a yoke, so the
+    // silhouette does not read as unfinished from the chase camera.
+    const yoke = new Mesh(new BoxGeometry(0.3, 0.11, 0.02), suitDark);
+    yoke.position.set(0, 0.22, -0.035);
+    this.rig.add(yoke);
+
+    const spine = new Mesh(new BoxGeometry(0.035, 0.44, 0.018), suit);
+    spine.position.set(0, 0.02, -0.045);
+    this.rig.add(spine);
   }
 
   /**

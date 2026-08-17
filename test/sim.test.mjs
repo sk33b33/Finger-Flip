@@ -14,6 +14,7 @@ import { recognise } from '../src/sim/Tricks.js';
 import { evaluateLanding, Quality } from '../src/sim/Landing.js';
 import Config from '../src/core/Config.js';
 import {
+  runLength,
   groundHeight,
   groundNormal,
   groundSlopeZ,
@@ -21,12 +22,42 @@ import {
   getFeatures,
   featureHeightAt,
   terrainHeight,
+  setLayout,
+  listLayouts,
 } from '../src/sim/Park.js';
 import Skater from '../src/sim/Skater.js';
 
 const STANCE = new Quaternion(); // identity: board travelling down +Z, level
 const REAL_DT = 1 / 60;
 const HALF_W = Config.board.width * 0.5;
+
+/**
+ * Runs a check against every park, then puts the default one back.
+ *
+ * The layout is module state in sim/Park.js, so a test that switches it and
+ * walks away poisons everything after it. This is the only sanctioned way to
+ * change parks in the suite.
+ */
+function forEachLayout(fn) {
+  try {
+    for (const layout of listLayouts()) {
+      setLayout(layout.id);
+      fn(layout);
+    }
+  } finally {
+    setLayout('funrun');
+  }
+}
+
+/** Trailing edges of every launch lip in the park currently loaded. */
+function findLips(step = 0.25) {
+  const lips = [];
+  const run = runLength();
+  for (let z = 0; z < run; z += step) {
+    if (isLip(0, z, 0.5) && !isLip(0, z + step, 0.5)) lips.push(z);
+  }
+  return lips;
+}
 
 /**
  * Drives the board through one flight with a scripted finger script.
@@ -211,20 +242,22 @@ test('the park never drops away under a rider without being a lip', () => {
   assert.ok(worst < 0.06, `surprise drop of ${worst.toFixed(3)}m at z=${worstAt.toFixed(2)}`);
 });
 
-test('the run loops seamlessly', () => {
-  // The lap descends and climbs back, so the property that matters is that it
-  // arrives back at exactly the height it started — a step at the seam would be
-  // a wall appearing out of nowhere every lap — and that it gets there smoothly
-  // rather than snapping in the last metre.
-  assert.equal(groundHeight(0, 0), 0);
-  assert.equal(groundHeight(0, 0), groundHeight(0, 220));
-  assert.ok(
-    Math.abs(groundHeight(0, 219.9)) < 0.002,
-    `ground is ${groundHeight(0, 219.9).toFixed(4)}m off the seam height just before it`,
-  );
+test('every run loops seamlessly', () => {
+  // Each lap climbs back to exactly the height it started — a step at the seam
+  // would be a wall appearing out of nowhere every lap — and gets there
+  // smoothly rather than snapping in the last metre.
+  forEachLayout(({ id, runLength: run }) => {
+    assert.equal(groundHeight(0, 0), 0, `${id} does not start at zero`);
+    assert.equal(groundHeight(0, 0), groundHeight(0, run), `${id} steps at the seam`);
+    assert.ok(
+      Math.abs(groundHeight(0, run - 0.1)) < 0.002,
+      `${id} is ${groundHeight(0, run - 0.1).toFixed(4)}m off the seam height just before it`,
+    );
+  });
 });
 
-test('the lap descends and recovers', () => {
+test('the Fun Run lap descends and recovers', () => {
+  setLayout('funrun');
   // The shape the terrain is meant to have: flat off the seam, a clear drop, a
   // level stretch, then back to where it started.
   const at = (z) => groundHeight(0, z) - featureHeightAt(0, z);
@@ -234,29 +267,36 @@ test('the lap descends and recovers', () => {
   assert.ok(at(219) > -0.1, `should be back at the seam height, got ${at(219).toFixed(2)}`);
 });
 
-test('the descent never reads as a launch lip', () => {
-  // isLip treats a drop steeper than a 0.2 grade as a takeoff edge. A downhill
-  // above that would put the rider permanently airborne, so the bare terrain
-  // has to stay well under it.
-  for (let z = 0; z < 220; z += 0.25) {
-    if (featureHeightAt(0, z) > 0.02) continue; // built features may be lips
-    assert.ok(!isLip(0, z, 0.5), `bare terrain at z=${z.toFixed(1)} reads as a lip`);
-  }
+test('terrain is never a launch lip, however steep', () => {
+  // isLip measures the BUILT structure, not the ground: you launch off the end
+  // of a ledge, not off a hillside. Keyed off absolute height instead, any
+  // terrain past a 0.2 grade read as one continuous lip and the rider was
+  // permanently airborne — which capped how steep a hill could be and made
+  // bowls impossible.
+  forEachLayout(({ id, runLength: run }) => {
+    for (let z = 0; z < run; z += 0.25) {
+      if (featureHeightAt(0, z) > 0.02) continue; // built features may be lips
+      assert.ok(!isLip(0, z, 0.5), `${id}: bare terrain at z=${z.toFixed(1)} reads as a lip`);
+    }
+  });
 });
 
-test('the park has launchable lips spread through the run', () => {
-  const lips = [];
-  for (let z = 0; z < 220; z += 0.25) {
-    if (isLip(0, z, 0.5) && !isLip(0, z + 0.25, 0.5)) lips.push(z);
-  }
-  assert.ok(lips.length >= 5, `expected several launch lips, found ${lips.length}`);
-  // Spread out, not bunched: the rider needs run-up between features.
-  for (let i = 1; i < lips.length; i++) {
-    assert.ok(lips[i] - lips[i - 1] > 8, `lips at ${lips[i - 1]} and ${lips[i]} are too close`);
-  }
+test('every park has launchable lips spread through the run', () => {
+  forEachLayout(({ id }) => {
+    const lips = findLips();
+    assert.ok(lips.length >= 4, `${id}: expected several launch lips, found ${lips.length}`);
+    // Spread out, not bunched: the rider needs run-up between features.
+    for (let i = 1; i < lips.length; i++) {
+      assert.ok(
+        lips[i] - lips[i - 1] > 8,
+        `${id}: lips at ${lips[i - 1]} and ${lips[i]} are too close`,
+      );
+    }
+  });
 });
 
 test('a kicker face tilts its normal back at the rider', () => {
+  setLayout('funrun');
   const n = groundNormal(0, 31, new Vector3());
   assert.ok(n.z < -0.2, `kicker normal ${n.z.toFixed(2)} should lean backwards`);
 });
@@ -265,6 +305,7 @@ test('the quarterpipe steepens toward its lip', () => {
   // A transition is defined by its curve: shallow at the bottom, near vertical
   // at the top. A constant slope would just be a bank.
   // Sampled inside the transition, which spans z 66 to its lip just under 68.
+  setLayout('funrun');
   const low = groundSlopeZ(0, 66.6);
   const high = groundSlopeZ(0, 67.8);
   assert.ok(low > 0.1, `the base should already rise, got ${low.toFixed(2)}`);
@@ -333,35 +374,40 @@ function runUpTo(lipZ, charge, { from = lipZ - 22 } = {}) {
   };
 }
 
-test('every feature is climbable at the rolling speed', () => {
-  // A rider at cruise can only rise v^2 / 2g before stalling. Halving the
-  // rolling speed halved that budget, which is what makes this a real
-  // constraint on the park rather than a note: build a feature taller than the
-  // budget and it stops being a ramp and becomes a wall.
+test('every feature in every park is climbable at the rolling speed', () => {
+  // A rider at cruise can only rise v^2 / 2g before stalling, so a feature
+  // taller than that budget is not a ramp, it is a wall. This is the single
+  // constraint that governs how big anything in a layout may be.
   const budget = (Config.skater.maxSpeed * Config.skater.maxSpeed) / (2 * -Config.sim.gravity);
-  for (const f of getFeatures()) {
-    assert.ok(
-      f.height < budget * 0.92,
-      `${f.type} at z=${f.z0} is ${f.height}m, but the rider can only climb ` +
-        `${budget.toFixed(2)}m at ${Config.skater.maxSpeed} m/s`,
-    );
-  }
+  forEachLayout(({ id }) => {
+    for (const f of getFeatures()) {
+      assert.ok(
+        f.height < budget * 0.92,
+        `${id}: ${f.type} at z=${f.z0} is ${f.height}m, but the rider can only climb ` +
+          `${budget.toFixed(2)}m at ${Config.skater.maxSpeed} m/s`,
+      );
+    }
+  });
 });
 
-test('the rider reaches every lip with speed left over', () => {
-  // The arithmetic above is necessary but not sufficient: rolling friction and
-  // the shape of the approach also cost speed.
-  for (const lip of [31.95, 54, 68, 112.3, 129, 160.45, 182.95]) {
-    const r = runUpTo(lip, 0.5);
-    assert.ok(!r.stalled, `stalled short of the lip at z=${lip} (reached ${r.z?.toFixed(1)})`);
-    assert.ok(
-      r.arrivedAt > 2.0,
-      `crawled onto the lip at z=${lip} with only ${r.arrivedAt.toFixed(2)} m/s`,
-    );
-  }
+test('the rider reaches every lip in every park with speed left over', () => {
+  // The climb budget is necessary but not sufficient: rolling friction, the
+  // shape of the approach and whatever the terrain is doing underneath all cost
+  // speed too. This is the test that actually rides each park.
+  forEachLayout(({ id }) => {
+    for (const lip of findLips()) {
+      const r = runUpTo(lip, 0.5);
+      assert.ok(!r.stalled, `${id}: stalled short of the lip at z=${lip} (reached ${r.z?.toFixed(1)})`);
+      assert.ok(
+        r.arrivedAt > 2.0,
+        `${id}: crawled onto the lip at z=${lip} with only ${r.arrivedAt.toFixed(2)} m/s`,
+      );
+    }
+  });
 });
 
 test('the rider still clears the bank-to-bank gap at the halved rolling speed', () => {
+  setLayout('funrun');
   // Bank one's lip is at z=129 and bank two's face starts at 133.6. Halving the
   // rolling speed halved the horizontal carry, so this is the feature most at
   // risk from that change.
@@ -375,6 +421,7 @@ test('the rider still clears the bank-to-bank gap at the halved rolling speed', 
 });
 
 test('halving the rolling speed did not collapse hangtime', () => {
+  setLayout('funrun');
   // Air time comes mostly from the pop, not the ramp, so it should barely have
   // moved. If this drops, the trick window has quietly shrunk with it.
   const big = runUpTo(160.45, 1.0);
@@ -383,6 +430,7 @@ test('halving the rolling speed did not collapse hangtime', () => {
 });
 
 test('a transition cannot launch the rider out of the park', () => {
+  setLayout('funrun');
   // A quarterpipe steepens toward vertical, and an uncapped slope-to-lift term
   // there multiplied into a 10m launch. The cap is what keeps it a skatepark.
   const quarter = runUpTo(68, 1.0);
@@ -411,6 +459,7 @@ function rollShoulder(fromZ, toZ, startSpeed) {
 }
 
 test('the descent gives speed back without running away with the game', () => {
+  setLayout('funrun');
   // Gravity along the descent outruns rolling friction roughly five to one, so
   // without a ceiling the rider spends a third of every lap pinned at the cap
   // and the speedo never shows the speed the game is tuned around.
@@ -435,6 +484,7 @@ test('the descent gives speed back without running away with the game', () => {
 });
 
 test('the recovery climb never stalls the rider', () => {
+  setLayout('funrun');
   // The haul back to the seam is shallower than the descent, but it is 75m of
   // it. A rider who arrives at the seam crawling has a bad first feature.
   const up = rollShoulder(146, 219, Config.skater.maxSpeed * 0.75);
@@ -451,28 +501,41 @@ test('the terrain never rises above the seam', () => {
   // the seam — which is the shape of the bug it replaced, where a slab three
   // metres above the descent hid the whole park the instant a trick lifted the
   // camera over its lid.
-  assert.equal(terrainHeight(0), 0);
-  assert.equal(terrainHeight(0), terrainHeight(220));
-  for (let z = 0; z < 220; z += 0.25) {
-    assert.ok(terrainHeight(z) <= 1e-9, `terrain rose to ${terrainHeight(z).toFixed(3)} at z=${z}`);
-  }
+  forEachLayout(({ id, runLength: run }) => {
+    assert.equal(terrainHeight(0), 0, `${id} does not start at zero`);
+    assert.equal(terrainHeight(0), terrainHeight(run), `${id} steps at the seam`);
+    for (let z = 0; z < run; z += 0.25) {
+      assert.ok(
+        terrainHeight(z) <= 1e-9,
+        `${id}: terrain rose to ${terrainHeight(z).toFixed(3)} at z=${z}`,
+      );
+    }
+  });
 });
 
 test('the terrain is the ground wherever nothing is built on it', () => {
   // groundHeight = terrain + features, so off to the side of every feature the
   // two must agree exactly. This is the relationship the apron is offset from.
-  for (let z = 0; z < 220; z += 1) {
-    const x = 8.5; // outside the widest feature
-    assert.ok(
-      Math.abs(groundHeight(x, z) - terrainHeight(z)) < 1e-9,
-      `ground and terrain disagree at z=${z}`,
-    );
-  }
+  forEachLayout(({ id, runLength: run }) => {
+    for (let z = 0; z < run; z += 1) {
+      const x = 8.5; // outside the widest feature
+      assert.ok(
+        Math.abs(groundHeight(x, z) - terrainHeight(z)) < 1e-9,
+        `${id}: ground and terrain disagree at z=${z}`,
+      );
+    }
+  });
 });
 
 test('terrainHeight wraps like the park does', () => {
-  for (const z of [12, 57.5, 130, 199]) {
-    assert.ok(Math.abs(terrainHeight(z) - terrainHeight(z + 220)) < 1e-9, `no wrap at z=${z}`);
-    assert.ok(Math.abs(terrainHeight(z) - terrainHeight(z - 440)) < 1e-9, `no wrap back at z=${z}`);
-  }
+  forEachLayout(({ id, runLength: run }) => {
+    for (const f of [0.05, 0.3, 0.6, 0.9]) {
+      const z = f * run;
+      assert.ok(Math.abs(terrainHeight(z) - terrainHeight(z + run)) < 1e-9, `${id}: no wrap at ${z}`);
+      assert.ok(
+        Math.abs(terrainHeight(z) - terrainHeight(z - 2 * run)) < 1e-9,
+        `${id}: no wrap back at ${z}`,
+      );
+    }
+  });
 });

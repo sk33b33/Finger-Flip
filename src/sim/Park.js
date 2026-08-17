@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import Config from '../core/Config.js';
+import { LAYOUTS, DEFAULT_LAYOUT, findLayout } from './Layouts.js';
 
 /**
  * The skatepark, defined once as a height function.
@@ -8,86 +8,40 @@ import Config from '../core/Config.js';
  * visual mesh are all generated from sampleGround(). There is no second,
  * drifting copy of the level geometry.
  *
- * The layout is periodic over Config.park.runLength with flat ground at the
- * seam, so the run loops forever without a visible join.
+ * Which park is a runtime choice — see sim/Layouts.js for the data and the
+ * constraints every layout has to satisfy. Everything below reads the ACTIVE
+ * layout, so the whole file is layout-agnostic: the only thing that changes
+ * when you pick a different park is `active`.
+ *
+ * Each layout is periodic over its own run length with flat ground at the seam,
+ * so the run loops forever without a visible join.
  */
 
-const RUN = Config.park.runLength;
+let active = findLayout(DEFAULT_LAYOUT);
+
+/** Switch parks. Returns the layout now in play. */
+export function setLayout(id) {
+  const next = findLayout(id);
+  if (next) active = next;
+  return active;
+}
+
+export function getLayout() {
+  return active;
+}
+
+/** Every park, for the map picker. */
+export function listLayouts() {
+  return LAYOUTS.map(({ id, name, blurb, runLength }) => ({ id, name, blurb, runLength }));
+}
 
 /**
- * Features are ordered along +Z. Each is a smooth height ramp so that the
- * derivative (and therefore the surface normal) is continuous: a discontinuous
- * normal makes landings feel arbitrary.
+ * Height of the underlying ground at z, before anything is built on it.
  *
- * Heights are bounded by what the rider can actually climb. A rider arriving at
- * cruise can rise at most v^2 / 2g before stalling, so nothing here may exceed
- * that with margin — otherwise the feature is not a ramp, it is a wall you
- * grind to a halt against. There is a test for it.
- */
-const FEATURES = [
-  // A gentle warm-up kicker.
-  { type: 'kicker', z0: 26, z1: 32, height: 0.75, halfWidth: 5.0, curve: 2.0 },
-
-  // A ledge to pop off the end of. Its sides are vertical, which the lip
-  // detector already reads as a launch edge.
-  { type: 'ledge', z0: 44, z1: 54, height: 0.4, halfWidth: 2.2, blend: 0.5 },
-
-  // Quarterpipe: a true concave transition, the shape the park otherwise
-  // lacks entirely. Ride up the curve and it throws you straight upward.
-  { type: 'quarter', z0: 66, radius: 2.4, height: 1.1, halfWidth: 6.5 },
-
-  // A bank up onto a plateau, then a drop off the far end.
-  { type: 'plateau', z0: 92, z1: 99, z2: 111.4, z3: 112.8, height: 1.05, halfWidth: 7.0 },
-
-  // Bank to bank: two facing banks with a gap of flat between them. Clear the
-  // gap or come up short.
-  { type: 'bank', z0: 124, z1: 129, height: 1.0, halfWidth: 6.0, facing: 1 },
-  { type: 'bank', z0: 135, z1: 140, height: 1.0, halfWidth: 6.0, facing: -1 },
-
-  // The big one.
-  { type: 'kicker', z0: 152, z1: 160.5, height: 1.25, halfWidth: 6.0, curve: 2.6 },
-
-  // A hip: two kickers side by side with a saddle between them, so the natural
-  // launch is off to one side and the landing is not straight ahead. Rewards a
-  // body spin. They share a lip line — staggering them would leave a notch at
-  // the seam for a rider crossing the middle.
-  { type: 'kicker', z0: 176, z1: 183, height: 1.05, halfWidth: 4.0, curve: 2.2, offsetX: -3.4 },
-  { type: 'kicker', z0: 176, z1: 183, height: 1.05, halfWidth: 4.0, curve: 2.2, offsetX: 3.4 },
-
-  // A rolling hump to finish, ridden over rather than off.
-  { type: 'roller', z0: 196, z1: 208, height: 0.8, halfWidth: 8.0 },
-];
-
-/**
- * The lap's underlying gradient, before any feature sits on top of it: flat off
- * the seam, a clear descent, a level stretch, then a long shallow recovery back
- * to zero.
- *
- * Two things constrain the shape:
- *
- *   - It MUST return to exactly 0 at the seam, or the endless loop steps.
- *   - The descent must stay well under a 0.2 grade. isLip() calls any drop
- *     steeper than that a launch edge, and a downhill above the threshold would
- *     read as one continuous lip with the rider permanently airborne.
- *
- * The recovery is spread over far more distance than the drop, so the climb is
- * barely perceptible while the descent is not.
- */
-const TERRAIN = {
-  // Starts past the warm-up kicker, so the first feature of the lap is on flat
-  // ground and the descent does not quietly flatten its takeoff angle.
-  descentStart: 34,
-  descentEnd: 85,
-  levelEnd: 145,
-  drop: 3.0,
-  // Descent peaks at an 8.8% grade over 51m; the recovery spreads the same 3m
-  // over 75m for 6%. Both are comfortably under the 20% lip threshold, and the
-  // asymmetry is what makes the drop read while the climb does not.
-};
-
-/**
- * Height of the underlying ground at z, before anything is built on it. Always
- * <= 0, and exactly 0 at the seam.
+ * The profile is a list of control points joined by smoothsteps, which gives a
+ * continuous derivative everywhere — and therefore a continuous surface normal,
+ * without which landings feel arbitrary. The first and last points are pinned
+ * to y = 0 so the lap closes.
  *
  * Exported because the visual layer needs the gradient on its own: the far
  * ground beyond the park has to follow the same slope, and it can only do that
@@ -95,19 +49,23 @@ const TERRAIN = {
  * features standing on it.
  */
 export function terrainHeight(z) {
-  const T = TERRAIN;
+  const p = active.terrain;
   const t = wrapZ(z);
-  if (t <= T.descentStart) return 0;
-  if (t < T.descentEnd) return -T.drop * smoothstep(T.descentStart, T.descentEnd, t);
-  if (t < T.levelEnd) return -T.drop;
-  // The long haul back up to the seam.
-  return -T.drop * (1 - smoothstep(T.levelEnd, RUN, t));
+  for (let i = 0; i < p.length - 1; i++) {
+    const a = p[i];
+    const b = p[i + 1];
+    if (t > b.z) continue;
+    if (t <= a.z) return a.y;
+    return a.y + (b.y - a.y) * smoothstep(a.z, b.z, t);
+  }
+  return p[p.length - 1].y;
 }
 
 const _n = new Vector3();
 
 /** Wrap a world Z into the park's repeating domain. */
 export function wrapZ(z) {
+  const RUN = active.runLength;
   let t = z % RUN;
   if (t < 0) t += RUN;
   return t;
@@ -127,7 +85,7 @@ export function groundHeight(x, z) {
 export function featureHeightAt(x, z) {
   const t = wrapZ(z);
   let h = 0;
-  for (const f of FEATURES) {
+  for (const f of active.features) {
     h = Math.max(h, featureHeight(f, x, t));
   }
   return h;
@@ -220,12 +178,19 @@ export function groundSlopeZ(x, z) {
 }
 
 /**
- * True when the surface drops away sharply ahead: a lip. Used to launch the
+ * True when a BUILT feature drops away sharply ahead: a lip. Used to launch the
  * rider even without a pop, and to tell the camera a trick is coming.
+ *
+ * Deliberately measured against the features alone, not the ground. You launch
+ * off the end of a ledge or the lip of a kicker — structure someone built — not
+ * off a hillside. Keyed off absolute height instead, any terrain steeper than a
+ * 0.2 grade reads as one continuous lip and the rider is permanently airborne,
+ * which put a hard ceiling on how steep a hill could be and made bowls
+ * impossible. This is what lets a layout have real terrain.
  */
 export function isLip(x, z, lookahead = 1.4) {
-  const here = groundHeight(x, z);
-  const ahead = groundHeight(x, z + lookahead);
+  const here = featureHeightAt(x, z);
+  const ahead = featureHeightAt(x, z + lookahead);
   return here - ahead > 0.28;
 }
 
@@ -238,11 +203,11 @@ export function distanceToLip(x, z, maxLook = 26) {
 }
 
 export function getFeatures() {
-  return FEATURES;
+  return active.features;
 }
 
 export function runLength() {
-  return RUN;
+  return active.runLength;
 }
 
 export function sampleGround(x, z) {

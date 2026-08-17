@@ -45,7 +45,7 @@ export default class ParkMesh extends Group {
     this.material = this.buildGroundMaterial();
 
     this.shared = {
-      ground: this.buildGroundGeometry(),
+      ground: null, // per-layout; built by buildPark()
       lipTrim: this.buildLipTrimGeometry(),
       post: new BoxGeometry(0.09, 2.2, 0.09),
       box: new BoxGeometry(1, 1, 1),
@@ -61,6 +61,22 @@ export default class ParkMesh extends Group {
     };
 
     this.tiles = [];
+    this.apron = null;
+    this.buildPark();
+  }
+
+  /**
+   * Build (or rebuild) everything that depends on which park is loaded.
+   *
+   * The materials, textures and the small shared geometries — fence post,
+   * building box, lip trim — are layout-independent and deliberately survive a
+   * switch: they are the expensive half to create, and nothing about them
+   * changes when the ground underneath does.
+   */
+  buildPark() {
+    this.run = runLength();
+    this.shared.ground = this.buildGroundGeometry();
+
     for (let i = -1; i <= 1; i++) {
       const tile = this.buildTile();
       tile.position.z = i * this.run;
@@ -71,6 +87,23 @@ export default class ParkMesh extends Group {
 
     this.apron = this.buildApron();
     this.add(this.apron);
+  }
+
+  /** Swap to whichever layout sim/Park.js now has loaded. */
+  rebuild() {
+    for (const tile of this.tiles) {
+      this.remove(tile);
+      // Only the InstancedMeshes own anything: their geometries are shared and
+      // their per-instance buffers are not.
+      for (const child of tile.children) if (child.isInstancedMesh) child.dispose();
+    }
+    this.tiles.length = 0;
+
+    this.shared.ground.dispose();
+    this.remove(this.apron);
+    this.apron.geometry.dispose();
+
+    this.buildPark();
   }
 
   // --------------------------------------------------------------- apron ---
@@ -275,8 +308,11 @@ export default class ParkMesh extends Group {
     for (let z = 0; z < this.run; z += 0.25) {
       if (!isLip(0, z, 0.5)) continue;
       if (isLip(0, z + 0.25, 0.5)) continue; // keep only the trailing edge
+      // Width of the built structure, not of the ground: on a layout with real
+      // terrain the ground is rarely near zero, and measuring that would run
+      // the trim strip out to the fence.
       let w = 0.5;
-      while (w < this.halfX && groundHeight(w, z) > 0.05) w += 0.25;
+      while (w < this.halfX && featureHeightAt(w, z) > 0.05) w += 0.25;
       // Inset a little so the strip sits on the lip rather than overhanging it.
       spots.push({ z, width: Math.max(1.6, w * 1.8), y: groundHeight(0, z) });
     }
@@ -318,8 +354,11 @@ export default class ParkMesh extends Group {
     const posts = new InstancedMesh(this.shared.post, this.shared.postMat, perSide * 2);
     let n = 0;
     for (let i = 0; i < perSide; i++) {
+      const z = i * 6 + 1;
       for (const s of [-1, 1]) {
-        dummy.position.set(s * this.halfX, 1.1, i * 6 + 1);
+        // On the terrain, not on y = 0. A layout with a real hill in it leaves
+        // anything pinned to zero either buried or hanging in the air.
+        dummy.position.set(s * this.halfX, terrainHeight(z) + 1.1, z);
         dummy.scale.set(1, 1, 1);
         dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
@@ -339,7 +378,10 @@ export default class ParkMesh extends Group {
       const w = 5 + rnd() * 13;
       const h = 6 + rnd() * 28;
       const d = 5 + rnd() * 13;
-      dummy.position.set(s * (this.halfX + 12 + rnd() * 52), h / 2, rnd() * this.run);
+      const z = rnd() * this.run;
+      // Founded on the terrain and sunk a little into it, so a building on the
+      // slope stands on the hillside rather than floating over it.
+      dummy.position.set(s * (this.halfX + 12 + rnd() * 52), terrainHeight(z) + h / 2 - 0.4, z);
       dummy.scale.set(w, h, d);
       dummy.rotation.set(0, rnd() * 0.4 - 0.2, 0);
       dummy.updateMatrix();

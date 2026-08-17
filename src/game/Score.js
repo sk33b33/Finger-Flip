@@ -93,6 +93,9 @@ export default class ScoreSystem {
       repeated,
       caught: hands.caught,
       lateCatch: hands.catchAt > 0.66,
+      // Carried through so the profile can total it without being handed the
+      // flight separately. It is already scored above; this is only bookkeeping.
+      airTime: flight.airTime,
       reasons: landing.reasons,
       comboAt: this.comboMultiplier,
     };
