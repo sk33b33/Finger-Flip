@@ -93,6 +93,10 @@ console.log('CAUGHT', JSON.stringify(await state()));
 await waitFor((s) => s.state !== 'AIR', 20000);
 await page.waitForTimeout(300);
 console.log('RESULT', JSON.stringify(await state()));
+console.log('GRADED', JSON.stringify(await page.evaluate(() => {
+  const h = window.FF.game.score.history[0];
+  return h && { trick: h.trick, quality: h.quality, reasons: h.reasons };
+})));
 await shot('08-landed');
 
 await page.waitForTimeout(2600);

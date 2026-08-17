@@ -28,22 +28,23 @@ export const Config = {
   },
 
   skater: {
-    // 35 km/h. The forces that act on the speed are scaled with it, so
+    // 40 km/h. The forces that act on the speed are scaled with it, so
     // acceleration and braking still take the same time to do their job rather
     // than becoming twitchy at a different top end.
-    maxSpeed: 9.72,
-    accel: 4.6,
-    brake: 6.5,
-    rollFriction: 0.26,
+    maxSpeed: 11.11,
+    accel: 5.26,
+    brake: 7.43,
+    rollFriction: 0.3,
     // Ceiling on gravity-assisted speed, as a multiple of maxSpeed. The lap now
     // has a real descent, and gravity along it outruns rolling friction by five
     // to one — so this is not a rare overshoot off a drop any more, it is what
     // the speedo reads for a third of every lap. Kept tight so the number the
-    // player mostly sees is the 35 the game is tuned around, with the hill
+    // player mostly sees is the cruise the game is tuned around, with the hill
     // worth a push rather than a different game.
     overspeed: 1.1,
-    // Deliberately NOT halved: the same yaw rate at half the speed halves the
-    // turning circle, which is what a slower roll should feel like.
+    // Deliberately NOT scaled with the speed: holding the yaw rate fixed means
+    // the turning circle grows as the game gets faster, which is what going
+    // faster should feel like.
     steerRate: 1.5, // rad/s at full lock
     steerSpeedFalloff: 0.55, // steering authority lost at top speed
     height: 1.78, // read only by view/RiderMesh.js; the sim never uses it
@@ -219,7 +220,7 @@ export const Config = {
     pitchPer360: 260, // per full pitch (impossibles are hard)
     airTimeBonusPerSecond: 90,
     heightBonusPerMetre: 70,
-    speedBonusPerMps: 24, // doubled with the halved top speed
+    speedBonusPerMps: 24,
     // Landing without ever catching the board is luck, not skill.
     catchBonus: 260,
     lateCatchBonus: 340, // caught in the last third of the flight

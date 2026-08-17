@@ -243,7 +243,12 @@ export default class TrickFX extends Group {
    */
   update(realDelta, s) {
     const {
-      board,
+      // The INTERPOLATED board position, not board.position. Everything drawn
+      // around the deck — the finger reticles, the contact shadow, the plane
+      // ring — has to sit in the same render space as the deck itself, or it
+      // slides against it by up to one physics step. In slow motion that step
+      // spans two rendered frames and the whole assembly shudders.
+      boardPos,
       fingers,
       stanceQuat,
       trickActive,
@@ -264,7 +269,7 @@ export default class TrickFX extends Group {
       t.group.visible = show;
       if (!show) continue;
 
-      _v.copy(f.pos).applyQuaternion(stanceQuat).add(board.position);
+      _v.copy(f.pos).applyQuaternion(stanceQuat).add(boardPos);
       t.group.position.copy(_v);
       t.group.quaternion.copy(stanceQuat);
 
@@ -285,15 +290,15 @@ export default class TrickFX extends Group {
     // ---------------------------------------------------- contact shadow ---
     // Driven by height above the surface directly under the board, so it is
     // legible on a ramp face as well as on the flat.
-    const shadowOn = airborne || board.position.y > 0.001;
+    const shadowOn = airborne || boardPos.y > 0.001;
     this.shadowCarrier.visible = shadowOn;
     if (shadowOn) {
-      const surface = groundHeight(board.position.x, board.position.z);
-      const height = Math.max(0, board.position.y - surface);
+      const surface = groundHeight(boardPos.x, boardPos.z);
+      const height = Math.max(0, boardPos.y - surface);
       const t = MathUtils.clamp(height / SHADOW_FADE_HEIGHT, 0, 1);
 
-      this.shadowCarrier.position.set(board.position.x, surface + 0.012, board.position.z);
-      groundNormal(board.position.x, board.position.z, _n);
+      this.shadowCarrier.position.set(boardPos.x, surface + 0.012, boardPos.z);
+      groundNormal(boardPos.x, boardPos.z, _n);
       _q.setFromUnitVectors(UP, _n);
       this.shadowCarrier.quaternion.copy(_q);
 
@@ -314,7 +319,7 @@ export default class TrickFX extends Group {
       const show = this.homeFade > 0.02 && o > 0.02;
       h.carrier.visible = show;
       if (!show) continue;
-      _v.set(0, 0, h.carrier.userData.along).applyQuaternion(stanceQuat).add(board.position);
+      _v.set(0, 0, h.carrier.userData.along).applyQuaternion(stanceQuat).add(boardPos);
       h.carrier.position.copy(_v);
       h.carrier.quaternion.copy(stanceQuat);
       h.ring.material.opacity = this.homeFade * o * 0.5 * pulse;
@@ -324,7 +329,7 @@ export default class TrickFX extends Group {
     // ------------------------------------------------------- hand plane ---
     this.planeCarrier.visible = o > 0.02;
     if (this.planeCarrier.visible) {
-      this.planeCarrier.position.copy(board.position);
+      this.planeCarrier.position.copy(boardPos);
       this.planeCarrier.quaternion.copy(stanceQuat);
       this.planeRing.material.opacity = o * 0.14;
     }

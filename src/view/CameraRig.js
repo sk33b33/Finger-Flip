@@ -73,7 +73,7 @@ export default class CameraRig {
     this.fitToViewport();
     this._hadBoard = false;
     this.idleOrbit = 0;
-    this.chaseTarget(skater, _pos, _look);
+    this.chaseTarget(skater.position, skater.yaw, _pos, _look);
     this.position.copy(_pos);
     this.lookAt.copy(_look);
     this.fov = Config.camera.fov;
@@ -158,18 +158,22 @@ export default class CameraRig {
     );
   }
 
-  chaseTarget(skater, outPos, outLook) {
+  /**
+   * @param {Vector3} riderPos the INTERPOLATED render position, not the
+   *        simulation one — see update().
+   */
+  chaseTarget(riderPos, riderYaw, outPos, outLook) {
     const C = Config.camera;
     // While the world is stopped — the title card, an open menu — the shot
     // creeps around the rider instead of settling and dying. A still frame
     // under a menu looks like the game has hung; a moving one looks held.
-    const yaw = skater.yaw + this.idleOrbit;
+    const yaw = riderYaw + this.idleOrbit;
     const back = _tmp.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     // Dead centre behind the rider. The stance is opened up in RiderMesh to
     // compensate — a skater stands across the board, and from directly behind
     // one leg would otherwise hide the other.
     outPos
-      .copy(skater.position)
+      .copy(riderPos)
       .addScaledVector(back, C.followDistance)
       .add(_tmp2.set(0, C.followHeight, 0));
     // Never let the chase camera dip into a ramp.
@@ -177,15 +181,15 @@ export default class CameraRig {
     if (outPos.y < floor) outPos.y = floor;
     // Aim low and not too far ahead: it keeps the board in frame under the
     // rider's feet, which is the thing the player is about to be flipping.
-    outLook.copy(skater.position).add(_tmp2.set(0, 0.95, 0));
+    outLook.copy(riderPos).add(_tmp2.set(0, 0.95, 0));
     outLook.addScaledVector(_tmp.set(Math.sin(yaw), 0, Math.cos(yaw)), 1.9);
   }
 
   /**
-   * @param {Board} board
+   * @param {Vector3} boardPos the INTERPOLATED render position
    * @param {number} flightT 0..1 through the flight
    */
-  trickTarget(board, flightT, outPos, outLook) {
+  trickTarget(boardPos, flightT, outPos, outLook) {
     const C = Config.camera;
 
     // Orbit around the stance frame, not the board: the shot must not spin with
@@ -203,9 +207,9 @@ export default class CameraRig {
     const vertical = Math.sin(elevation) * dist + fall * C.landingRise * this.fittedDistance;
 
     outPos.set(
-      board.position.x + Math.sin(azimuth) * horizontal,
-      board.position.y + vertical,
-      board.position.z + Math.cos(azimuth) * horizontal,
+      boardPos.x + Math.sin(azimuth) * horizontal,
+      boardPos.y + vertical,
+      boardPos.z + Math.cos(azimuth) * horizontal,
     );
 
     const floor = groundHeight(outPos.x, outPos.z) + 0.34;
@@ -213,14 +217,25 @@ export default class CameraRig {
 
     // Look slightly below the board late in the flight so the landing surface
     // sits in the lower third of the screen rather than off the bottom.
-    outLook.copy(board.position);
+    outLook.copy(boardPos);
     outLook.y -= fall * 0.45;
   }
 
   /**
+   * Everything here works in RENDER space: the interpolated positions the meshes
+   * are actually drawn at, never the raw simulation state.
+   *
+   * That distinction is the difference between a smooth trick shot and a
+   * shuddering one. In slow motion the world advances about half a fixed step
+   * per rendered frame, so the simulation moves on roughly every other frame
+   * while the board mesh glides every frame off the interpolation alpha. A
+   * camera locked to the simulation position therefore lurches at half the
+   * frame rate against a board that does not — and because the trick shot IS
+   * locked to the board, the eye reads all of that as the board juddering.
+   *
    * @param {number} realDelta wall-clock seconds
    */
-  update(realDelta, { skater, board, flightT, paused = false }) {
+  update(realDelta, { riderPos, riderYaw, boardPos, flightT, paused = false }) {
     const C = Config.camera;
 
     // Only advances while the world is stopped, so a run never drifts off axis.
@@ -232,19 +247,19 @@ export default class CameraRig {
     // exactly when the player is trying to work it. Carrying the board's own
     // movement across first leaves the lerp only the framing error to close.
     if (this._hadBoard) {
-      _drift.subVectors(board.position, this._lastBoardPos);
+      _drift.subVectors(boardPos, this._lastBoardPos);
       this.position.addScaledVector(_drift, this.trickBlend);
       this.lookAt.addScaledVector(_drift, this.trickBlend);
     }
-    this._lastBoardPos.copy(board.position);
+    this._lastBoardPos.copy(boardPos);
     this._hadBoard = true;
 
-    this.chaseTarget(skater, _pos, _look);
+    this.chaseTarget(riderPos, riderYaw, _pos, _look);
     let targetFov = C.fov;
 
     if (this.trickBlend > 0.001) {
       this.orbit += C.trickOrbitRate * realDelta;
-      this.trickTarget(board, flightT, _tmp, _tmp2);
+      this.trickTarget(boardPos, flightT, _tmp, _tmp2);
       const b = smoothstep(0, 1, this.trickBlend);
       _pos.lerp(_tmp, b);
       _look.lerp(_tmp2, b);

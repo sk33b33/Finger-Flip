@@ -43,7 +43,9 @@ presses:
 The catch is the skill. A flick starts the board spinning; it keeps spinning
 until something stops it. Put a finger back on the deck as it comes round flat
 and you keep exactly the rotation you had at that moment. Catch late and you
-score more.
+score more. A planted finger holds the board *with* you — it bleeds the deck's
+drift relative to the rider, not relative to the ground you are both flying
+over.
 
 **Body spin** comes from the carve you are already doing. Whatever you are
 steering at the instant you pop is carried into the air as rider rotation, so a

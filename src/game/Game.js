@@ -50,6 +50,10 @@ const _travel = new Vector3();
 const _q = new Quaternion();
 const _q2 = new Quaternion();
 const _predicted = new Vector3();
+// The rider's interpolated render position. Its own vector rather than a shared
+// scratch: the camera reads it forty lines after it is written, and it is now
+// load-bearing for whether the trick shot is smooth.
+const _riderRender = new Vector3();
 const _screen = new Vector3();
 
 export const State = Object.freeze({
@@ -400,13 +404,13 @@ export default class Game {
       for (const f of this.fingers.fingers) f.active = false;
       return;
     }
-    this.mapper.updateBasis(this.stage.camera, this.board.position, this.cameraRig.stanceQuat);
+    this.mapper.updateBasis(this.stage.camera, this.boardMesh.position, this.cameraRig.stanceQuat);
     this.mapper.update(rd);
 
     const before = this.fingers.totalFlicks;
     const caughtBefore = this.fingers.caught;
     const omegaBefore = this.board.angularVelocity.length();
-    this.fingers.update(this.board, this.cameraRig.stanceQuat, rd, this.flightT);
+    this.fingers.update(this.board, this.cameraRig.stanceQuat, rd, this.flightT, this.skater.velocity);
 
     // Development aid: set FF.trace = [] in the console to record the input
     // path frame by frame. Costs nothing when tracing is off.
@@ -745,15 +749,19 @@ export default class Game {
     }
 
     // --- Interpolated transforms ------------------------------------------
+    // Everything below this line works in RENDER space. The simulation position
+    // is only ever a source for the interpolation; the camera, the lights, the
+    // effects and the finger basis all read the interpolated result, so nothing
+    // visual can disagree with where the board is drawn.
     this.boardMesh.position.lerpVectors(this.board.prevPosition, this.board.position, alpha);
     this.boardMesh.quaternion
       .copy(this.board.prevQuaternion)
       .slerp(this.board.quaternion, alpha);
 
-    _v.lerpVectors(this.skater.prevPosition, this.skater.position, alpha);
-    this.riderMesh.position.copy(_v);
+    _riderRender.lerpVectors(this.skater.prevPosition, this.skater.position, alpha);
+    this.riderMesh.position.copy(_riderRender);
     if (this.state !== State.BAIL) {
-      groundNormal(_v.x, _v.z, _n);
+      groundNormal(_riderRender.x, _riderRender.z, _n);
       this.riderMesh.position.addScaledVector(_n, RIDER_OFFSET);
     }
     if (this.state === State.BAIL) {
@@ -792,8 +800,9 @@ export default class Game {
       1 - Math.exp(-blendRate * rd),
     );
     this.cameraRig.update(rd, {
-      skater: this.skater,
-      board: this.board,
+      riderPos: _riderRender,
+      riderYaw: this.skater.yaw,
+      boardPos: this.boardMesh.position,
       flightT: this.flightT,
       paused: this.paused,
     });
@@ -801,7 +810,7 @@ export default class Game {
     // behind a thigh at the moment the player needs to read it.
     this.riderMesh.setFade(smoothstep(0.12, 0.55, this.cameraRig.trickBlend) * 0.94);
     this.stage.focusShadows(this.riderMesh.position);
-    this.stage.setTrickLighting(this.cameraRig.trickBlend, this.board.position);
+    this.stage.setTrickLighting(this.cameraRig.trickBlend, this.boardMesh.position);
     this.stage.syncSky();
     this.parkMesh.follow(this.skater.position.z);
 
@@ -817,7 +826,7 @@ export default class Game {
     }
 
     this.trickFX.update(rd, {
-      board: this.board,
+      boardPos: this.boardMesh.position,
       fingers: this.fingers,
       stanceQuat: this.cameraRig.stanceQuat,
       trickActive: this.state === State.AIR,
@@ -829,7 +838,7 @@ export default class Game {
     // --- Post effects ------------------------------------------------------
     const slowmo = MathUtils.clamp(1 - (this.time.timeScale - 0.1) / 0.9, 0, 1);
     this.flash = Math.max(0, this.flash - rd * 1.9);
-    _screen.copy(this.board.position).project(this.stage.camera);
+    _screen.copy(this.boardMesh.position).project(this.stage.camera);
     const focus =
       this.state === State.AIR
         ? { x: _screen.x * 0.5 + 0.5, y: _screen.y * 0.5 + 0.5 }

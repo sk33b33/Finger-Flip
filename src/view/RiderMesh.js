@@ -60,8 +60,10 @@ import { CHARACTERS, findCharacter, DEFAULT_CHARACTER } from './Characters.js';
 const STANCE_YAW = Math.PI * 0.22;
 /** Distance from board centre to each foot: roughly over the trucks. */
 const FOOT_SPREAD = 0.2;
-/** Knee bend carried even at rest. */
+/** Knee bend carried even at rest: a skater never stands with legs locked. */
 const REST_BEND = 0.2;
+/** How far the hips sink at a full charge, as a fraction of rider height. */
+const CROUCH_DROP = 0.22;
 
 export default class RiderMesh extends Group {
   /** @param {object|string} character a spec from Characters.js, or its id */
@@ -106,10 +108,19 @@ export default class RiderMesh extends Group {
     // front foot over the nose truck.
     this.legs = [];
     for (const side of [-1, 1]) {
+      // The stance yaw lives on its own carrier and the hip below it rotates
+      // about x only. That keeps the whole leg — hip, knee, ankle — turning
+      // about ONE axis, which is what lets the IK below solve it as a flat
+      // two-bone chain. Put the yaw on the hip itself and each joint further
+      // down bends about a slightly different axis, and the foot wanders off
+      // the answer by a few degrees at every angle.
+      const stance = new Group();
+      stance.position.set(0, H * 0.5, side * FOOT_SPREAD);
+      stance.rotation.y = STANCE_YAW;
+      this.leanGroup.add(stance);
+
       const hip = new Group();
-      hip.position.set(0, H * 0.5, side * FOOT_SPREAD);
-      hip.rotation.y = STANCE_YAW;
-      this.leanGroup.add(hip);
+      stance.add(hip);
 
       const thigh = new Mesh(new CapsuleGeometry(r(0.075), H * 0.19, 4, 10), suit);
       thigh.position.y = -H * 0.12;
@@ -153,7 +164,7 @@ export default class RiderMesh extends Group {
       sole.position.set(0, -0.055, 0.025);
       ankle.add(sole);
 
-      this.legs.push({ hip, knee, ankle, side });
+      this.legs.push({ stance, hip, knee, ankle, side });
     }
 
     // ----------------------------------------------------------- torso ---
@@ -459,30 +470,54 @@ export default class RiderMesh extends Group {
    */
   setPose(crouch, lean, air) {
     const H = Config.skater.height;
-    // Never fully straight-legged: a skater rides with the knees soft, and
-    // locked-out legs read as a mannequin balanced on a plank.
-    const bend = REST_BEND + crouch * 0.8 + air * 0.9;
+    const L1 = H * 0.25; // hip to knee
+    const L2 = H * 0.23; // knee to ankle
+    const reach = L1 + L2;
+    // Where the ankle has to sit for the sole to be flat on the deck.
+    const ankleY = H * 0.5 - reach;
 
-    for (const { hip, knee, ankle } of this.legs) {
-      // Knees bend out over the toes, which after the stance yaw is across the
-      // board — the direction a skater actually loads in.
-      hip.rotation.x = -bend * 0.7;
-      knee.rotation.x = bend * 1.38;
-      ankle.rotation.x = -bend * 0.68;
-      hip.position.y = H * 0.5 - bend * H * 0.055;
+    // How far the hips sink. Rotating the joints and leaving the hips where
+    // they are is what used to lift the feet clear of the board as the rider
+    // loaded up — the legs folded and the whole rider went with them.
+    const sink = (REST_BEND * 0.055 + crouch * CROUCH_DROP) * H * (1 - air);
+    const hipY = H * 0.5 - sink;
+
+    // Two-bone IK. Given how far the hip has dropped, solve the knee and hip
+    // angles that put the ankle exactly back where it started — so the feet
+    // stay planted on the deck through the whole crouch, however deep it goes,
+    // and only leave it when the rider is actually airborne.
+    const d = clamp(hipY - ankleY, reach * 0.35, reach * 0.999);
+    const knee = Math.acos(clamp((d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2), -1, 1));
+    // Angle between the thigh and the straight hip-to-ankle line.
+    const psi = Math.atan2(L2 * Math.sin(knee), L1 + L2 * Math.cos(knee));
+
+    // In the air the legs stop being a support and tuck instead, which is the
+    // one time the feet are meant to come off the board.
+    const hipRot = MathUtils.lerp(-psi, -1.0, air);
+    const kneeRot = MathUtils.lerp(knee, 1.6, air);
+    // Counter-rotate the ankle by the total so the foot stays flat on the deck.
+    const ankleRot = MathUtils.lerp(psi - knee, -0.5, air);
+
+    for (const leg of this.legs) {
+      leg.stance.position.y = hipY;
+      leg.hip.rotation.x = hipRot;
+      leg.knee.rotation.x = kneeRot;
+      leg.ankle.rotation.x = ankleRot;
     }
 
-    this.torso.position.y = H * 0.5 - bend * H * 0.13;
-    this.torso.rotation.x = bend * 0.3;
+    // The upper body rides on the hips and folds forward over them.
+    const fold = REST_BEND + crouch * 0.8 + air * 0.9;
+    this.torso.position.y = hipY;
+    this.torso.rotation.x = fold * 0.3;
     // Shoulders open toward the nose as he loads, the way a skater winds up.
-    this.torso.rotation.y = STANCE_YAW - bend * 0.16;
+    this.torso.rotation.y = STANCE_YAW - fold * 0.16;
 
     // Carving rolls the whole body about the board's long axis.
     this.leanGroup.rotation.z = -lean * 0.2;
 
     // And the head comes back round to look where he is going.
     this.head.rotation.y = -STANCE_YAW * MathUtils.lerp(0.82, 0.62, air);
-    this.head.rotation.x = -bend * 0.16;
+    this.head.rotation.x = -fold * 0.16;
 
     // Arms out for balance, wider and higher in the air.
     const swing = lean * 0.5;
@@ -518,8 +553,11 @@ export default class RiderMesh extends Group {
 
   /** Fold up on a bail so the slam reads instantly. */
   setBailPose(t) {
+    const H = Config.skater.height;
     const k = Math.min(1, t * 3);
-    for (const { hip, knee } of this.legs) {
+    for (const { stance, hip, knee } of this.legs) {
+      // Straight to the joints, no IK: nothing is planted during a slam.
+      stance.position.y = H * 0.5;
       hip.rotation.x = -1.3 * k;
       knee.rotation.x = 2.0 * k;
     }
@@ -528,4 +566,8 @@ export default class RiderMesh extends Group {
     this.arms[0].shoulder.rotation.set(-2.1 * k, 0, 0.9);
     this.arms[1].shoulder.rotation.set(-1.9 * k, 0, -0.9);
   }
+}
+
+function clamp(v, a, b) {
+  return v < a ? a : v > b ? b : v;
 }

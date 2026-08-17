@@ -364,7 +364,7 @@ function fmt(v) {
  * Roll the rider up to a feature the way the game does — accelerating along the
  * ground, decelerating against the slope — and launch them off its lip.
  * Teleporting them to the lip at cruise speed would skip the climb, which is
- * exactly the part that got hard when the rolling speed was halved.
+ * exactly the part that changes whenever the rolling speed is retuned.
  */
 function runUpTo(lipZ, charge, { from = lipZ - 22 } = {}) {
   const s = new Skater();
@@ -432,11 +432,11 @@ test('the rider reaches every lip in every park with speed left over', () => {
   });
 });
 
-test('the rider still clears the bank-to-bank gap at the halved rolling speed', () => {
+test('the rider clears the bank-to-bank gap', () => {
   setLayout('funrun');
-  // Bank one's lip is at z=129 and bank two's face starts at 133.6. Halving the
-  // rolling speed halved the horizontal carry, so this is the feature most at
-  // risk from that change.
+  // Bank one's lip is at z=129 and bank two's face starts at 133.6. Horizontal
+  // carry scales with the rolling speed, so this is the feature most at risk
+  // whenever that is retuned in either direction.
   const weak = runUpTo(129, 0.35);
   const full = runUpTo(129, 1.0);
   assert.ok(
@@ -446,10 +446,10 @@ test('the rider still clears the bank-to-bank gap at the halved rolling speed', 
   assert.ok(full.carried > weak.carried, 'a full pop should carry further than a weak one');
 });
 
-test('halving the rolling speed did not collapse hangtime', () => {
+test('retuning the rolling speed did not collapse hangtime', () => {
   setLayout('funrun');
-  // Air time comes mostly from the pop, not the ramp, so it should barely have
-  // moved. If this drops, the trick window has quietly shrunk with it.
+  // Air time comes mostly from the pop, not the ramp, so it should barely move
+  // when the speed does. If this drops, the trick window has shrunk with it.
   const big = runUpTo(160.45, 1.0);
   assert.ok(big.airTime > 1.0, `expected real hangtime, got ${big.airTime.toFixed(2)}s`);
   assert.ok(big.peak > 1.6, `expected real height, got ${big.peak.toFixed(2)}m`);
@@ -685,4 +685,66 @@ test('the wind-out lasts the same time off a big launch and a small one', () => 
     small.fraction > 0.4,
     `even a minimum pop should hold full depth for most of its flight, got ${small.fraction.toFixed(2)}`,
   );
+});
+
+test('a catch holds the board with the rider, not against the ground', () => {
+  // A planted finger holds the deck WITH you. The catch used to damp the
+  // board's horizontal velocity toward zero in WORLD space, which brakes it
+  // against ground the pair of you are flying over at cruise — so every held
+  // catch slid the board out from under the rider, worse the faster the game
+  // got. It read as "Board shot out" on landings that looked perfect.
+  const carrier = new Vector3(0, 0, Config.skater.maxSpeed);
+  const board = new Board();
+  board.reset(new Vector3(0, 1.2, 0), 0);
+  board.airborne = true;
+  board.velocity.copy(carrier);
+  board.angularVelocity.set(0, 0, 6);
+
+  const fingers = new FingerFlipController();
+  for (const [f, along] of [
+    [fingers.left, -0.28],
+    [fingers.right, 0.28],
+  ]) {
+    f.active = true;
+    f.pos.set(0, 0, along);
+    f.prevPos.copy(f.pos);
+    f.vel.set(0, 0, 0);
+  }
+
+  let drift = 0; // how far the board slips behind the rider, in metres
+  for (let i = 0; i < 60; i++) {
+    fingers.update(board, STANCE, REAL_DT, 0.7, carrier);
+    drift += (carrier.z - board.velocity.z) * REAL_DT * 0.13; // world seconds
+  }
+
+  assert.ok(
+    Math.abs(board.velocity.z - carrier.z) < 0.05,
+    `the board should keep pace with the rider, ${board.velocity.z.toFixed(2)} vs ${carrier.z.toFixed(2)}`,
+  );
+  assert.ok(
+    Math.abs(drift) < Config.landing.bailDrift * 0.1,
+    `a held catch drifted the board ${drift.toFixed(3)}m out from under the rider`,
+  );
+});
+
+test('with no rider to hold it, a catch still settles the board', () => {
+  // The carrier is optional, and without one the damping has to behave exactly
+  // as it always did — a loose board is being stopped against the world.
+  const board = new Board();
+  board.reset(new Vector3(0, 1.2, 0), 0);
+  board.airborne = true;
+  board.velocity.set(1.5, 0, 1.5);
+
+  const fingers = new FingerFlipController();
+  for (const [f, along] of [
+    [fingers.left, -0.28],
+    [fingers.right, 0.28],
+  ]) {
+    f.active = true;
+    f.pos.set(0, 0, along);
+    f.prevPos.copy(f.pos);
+    f.vel.set(0, 0, 0);
+  }
+  for (let i = 0; i < 60; i++) fingers.update(board, STANCE, REAL_DT, 0.7);
+  assert.ok(Math.hypot(board.velocity.x, board.velocity.z) < 0.5, 'should bleed toward rest');
 });

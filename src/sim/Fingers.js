@@ -99,6 +99,7 @@ export default class FingerFlipController {
     this.catchStrength = 0;
     this.lastCatchAtNormalisedTime = -1;
     this.peakSpin = 0;
+    this._carrierVel = null;
 
     this.halfLength = Config.board.length * 0.5;
     this.halfWidth = Config.board.width * 0.5;
@@ -124,9 +125,18 @@ export default class FingerFlipController {
    * @param {Quaternion} stanceQuat world rotation of the stance frame
    * @param {number} realDelta seconds of wall-clock time since the last frame
    * @param {number} flightT normalised progress through the air, 0..1
+   * @param {Vector3|null} carrierVel the rider's velocity, if there is a rider.
+   *        A planted finger holds the board WITH you, so the catch bleeds the
+   *        board's drift relative to the RIDER rather than relative to the
+   *        world. Damping toward world zero instead brakes the deck against
+   *        ground you are both flying over at cruise, so it slides out from
+   *        under you the whole time you hold a catch — and worse the faster the
+   *        game gets, which is how it finally showed up.
    */
-  update(board, stanceQuat, realDelta, flightT = 0) {
+  update(board, stanceQuat, realDelta, flightT = 0, carrierVel = null) {
     if (realDelta <= 0) return;
+    // Read by solveFinger, which is where the catch damping lives.
+    this._carrierVel = carrierVel;
 
     const spinMag = board.angularVelocity.length();
     if (spinMag > this.peakSpin) this.peakSpin = spinMag;
@@ -271,8 +281,13 @@ export default class FingerFlipController {
         0,
         1 - Config.fingers.catchLinearDamping * c * stillness * dt,
       );
-      board.velocity.x *= lin;
-      board.velocity.z *= lin;
+      // Toward the carrier, not toward zero. With no carrier the two are the
+      // same thing, so a bare board still settles the way it always did.
+      const carrier = this._carrierVel;
+      const cx = carrier ? carrier.x : 0;
+      const cz = carrier ? carrier.z : 0;
+      board.velocity.x = cx + (board.velocity.x - cx) * lin;
+      board.velocity.z = cz + (board.velocity.z - cz) * lin;
     }
 
     finger.contactTime += dt;
