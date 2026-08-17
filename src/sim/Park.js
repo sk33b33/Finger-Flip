@@ -85,14 +85,23 @@ const TERRAIN = {
   // asymmetry is what makes the drop read while the climb does not.
 };
 
-/** Height of the underlying ground at z, before features. Always <= 0. */
-function baseHeight(z) {
+/**
+ * Height of the underlying ground at z, before anything is built on it. Always
+ * <= 0, and exactly 0 at the seam.
+ *
+ * Exported because the visual layer needs the gradient on its own: the far
+ * ground beyond the park has to follow the same slope, and it can only do that
+ * without cutting through the park if it knows the terrain apart from the
+ * features standing on it.
+ */
+export function terrainHeight(z) {
   const T = TERRAIN;
-  if (z <= T.descentStart) return 0;
-  if (z < T.descentEnd) return -T.drop * smoothstep(T.descentStart, T.descentEnd, z);
-  if (z < T.levelEnd) return -T.drop;
+  const t = wrapZ(z);
+  if (t <= T.descentStart) return 0;
+  if (t < T.descentEnd) return -T.drop * smoothstep(T.descentStart, T.descentEnd, t);
+  if (t < T.levelEnd) return -T.drop;
   // The long haul back up to the seam.
-  return -T.drop * (1 - smoothstep(T.levelEnd, RUN, z));
+  return -T.drop * (1 - smoothstep(T.levelEnd, RUN, t));
 }
 
 const _n = new Vector3();
@@ -107,7 +116,7 @@ export function wrapZ(z) {
 /** Height of the park surface under (x, z): the terrain, plus anything built on it. */
 export function groundHeight(x, z) {
   const t = wrapZ(z);
-  return baseHeight(t) + featureHeightAt(x, t);
+  return terrainHeight(t) + featureHeightAt(x, t);
 }
 
 /**

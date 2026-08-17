@@ -17,8 +17,22 @@
     />
     <!-- The title card is the first thing on screen, so it starts downloading
          before the module graph does. `type` means a browser without WebP skips
-         this and picks up the JPEG from the <picture> instead. -->
-    <link rel="preload" as="image" href="/splash.webp" type="image/webp" />
+         these and picks up the JPEG from the <picture> instead, and `media`
+         means a phone never spends 230KB fetching the crop it will not show. -->
+    <link
+      rel="preload"
+      as="image"
+      href="/splash.webp"
+      type="image/webp"
+      media="(min-aspect-ratio: 1/1)"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="/splash-portrait.webp"
+      type="image/webp"
+      media="(max-aspect-ratio: 1/1)"
+    />
     <meta
       name="description"
       content="A 3D skateboarding game where you flip the board with a finger from each hand, in slow motion."

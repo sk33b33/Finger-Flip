@@ -20,6 +20,7 @@ import {
   isLip,
   getFeatures,
   featureHeightAt,
+  terrainHeight,
 } from '../src/sim/Park.js';
 import Skater from '../src/sim/Skater.js';
 
@@ -441,4 +442,37 @@ test('the recovery climb never stalls the rider', () => {
     up.speed > Config.skater.maxSpeed * 0.85,
     `crawled to the seam at ${up.speed.toFixed(2)} m/s`,
   );
+});
+
+test('the terrain never rises above the seam', () => {
+  // The far ground is a sheet tracking terrainHeight() 6cm below it, and that
+  // only stays under the park because features exclusively ADD height. If the
+  // terrain ever rose above 0, the apron would cut through the flat ground at
+  // the seam — which is the shape of the bug it replaced, where a slab three
+  // metres above the descent hid the whole park the instant a trick lifted the
+  // camera over its lid.
+  assert.equal(terrainHeight(0), 0);
+  assert.equal(terrainHeight(0), terrainHeight(220));
+  for (let z = 0; z < 220; z += 0.25) {
+    assert.ok(terrainHeight(z) <= 1e-9, `terrain rose to ${terrainHeight(z).toFixed(3)} at z=${z}`);
+  }
+});
+
+test('the terrain is the ground wherever nothing is built on it', () => {
+  // groundHeight = terrain + features, so off to the side of every feature the
+  // two must agree exactly. This is the relationship the apron is offset from.
+  for (let z = 0; z < 220; z += 1) {
+    const x = 8.5; // outside the widest feature
+    assert.ok(
+      Math.abs(groundHeight(x, z) - terrainHeight(z)) < 1e-9,
+      `ground and terrain disagree at z=${z}`,
+    );
+  }
+});
+
+test('terrainHeight wraps like the park does', () => {
+  for (const z of [12, 57.5, 130, 199]) {
+    assert.ok(Math.abs(terrainHeight(z) - terrainHeight(z + 220)) < 1e-9, `no wrap at z=${z}`);
+    assert.ok(Math.abs(terrainHeight(z) - terrainHeight(z - 440)) < 1e-9, `no wrap back at z=${z}`);
+  }
 });

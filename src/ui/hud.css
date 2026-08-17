@@ -434,29 +434,26 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  /* Cover down to about 3:4. The title spans the middle third of the art, so
-     everything above that ratio crops only the boards at the edges. */
+  /* Cover, in both orientations. There are two crops of the art — 3:2 and 3:4 —
+     and the <picture> swaps between them at square, so whichever one is on
+     screen is already composed for roughly the shape it has to fill. */
   object-fit: cover;
   object-position: center;
 }
 
-/* A blurred, darkened bed of the same art, for when the frame is too narrow to
-   cover without eating the title. Off by default: on a wide screen the art
-   already fills the frame and this would be a wasted layer. */
+/* A blurred, darkened bed of the art, for shapes too extreme for either crop to
+   cover without eating the title. Off by default — with a portrait crop now
+   serving upright phones, this is a safety net for letterbox oddities, not the
+   phone path it started life as. */
 .overlay--splash::before {
   content: '';
   position: absolute;
   inset: 0;
   opacity: 0;
-  background-image: url('/splash.jpg');
-  background-image: -webkit-image-set(
-    url('/splash.webp') type('image/webp'),
-    url('/splash.jpg') type('image/jpeg')
-  );
-  background-image: image-set(
-    url('/splash.webp') type('image/webp'),
-    url('/splash.jpg') type('image/jpeg')
-  );
+  /* No background-image here. A background is fetched whether or not the
+     element is visible, and opacity alone would cost every wide screen an
+     extra 288KB for a layer it never shows. The image is attached inside the
+     media query below, where it is actually used. */
   background-size: cover;
   background-position: center;
   filter: blur(30px) brightness(0.5) saturate(1.35);
@@ -465,11 +462,13 @@ body {
   transform: scale(1.4);
 }
 
-/* Taller than 3:4 — a phone held upright. Cover here would slice the ends off
-   FINGER FLIP, so the art becomes a band across the width, sitting on the blur.
-   The band is the image element itself rather than an object-fit box, so its
-   edges can be faded into the bed instead of cut against it. */
-@media (max-aspect-ratio: 3 / 4) {
+/* Narrower than 1:2 — a letterbox no crop of the art can fill. The portrait
+   crop covers an upright phone with the title intact down to about 1:2 (at
+   390x844 it shows 62% of the art's width and the title spans 24-75% of it), so
+   below that the art becomes a band across the width, sitting on the blur. The
+   band is the image element itself rather than an object-fit box, so its edges
+   can be faded into the bed instead of cut against it. */
+@media (max-aspect-ratio: 1 / 2) {
   .splash__art img {
     /* Positioned rather than centred by a layout: the band is a known size —
        the full width at the art's own 3:2 — and it wants to sit a little above
@@ -490,6 +489,17 @@ body {
       transparent 100%
     );
     mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 91%, transparent 100%);
+  }
+  .overlay--splash::before {
+    background-image: url('/splash-portrait.jpg');
+    background-image: -webkit-image-set(
+      url('/splash-portrait.webp') type('image/webp'),
+      url('/splash-portrait.jpg') type('image/jpeg')
+    );
+    background-image: image-set(
+      url('/splash-portrait.webp') type('image/webp'),
+      url('/splash-portrait.jpg') type('image/jpeg')
+    );
   }
   .overlay--splash.is-ready::before {
     opacity: 1;

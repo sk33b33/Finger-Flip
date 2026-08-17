@@ -12,7 +12,7 @@ import {
   Vector2,
 } from 'three';
 import Config from '../core/Config.js';
-import { groundHeight, featureHeightAt, isLip, runLength } from '../sim/Park.js';
+import { groundHeight, featureHeightAt, terrainHeight, isLip, runLength } from '../sim/Park.js';
 import {
   concreteTexture,
   concreteRoughness,
@@ -69,16 +69,68 @@ export default class ParkMesh extends Group {
       this.tiles.push(tile);
     }
 
-    // A single far ground plane so the concrete never just stops in mid-air. It
-    // is a thick slab rather than a sheet, and it sits low enough to stay under
-    // the lowest point of the lap's descent — a thin plane at y = 0 would cut
-    // straight through the terrain wherever the ground dips below it.
-    this.haze = new Mesh(
-      new BoxGeometry(900, 12, this.run * 3),
-      new MeshBasicMaterial({ color: 0x252a32 }),
-    );
-    this.haze.position.y = -6.1;
-    this.add(this.haze);
+    this.apron = this.buildApron();
+    this.add(this.apron);
+  }
+
+  // --------------------------------------------------------------- apron ---
+
+  /**
+   * Far ground, so the concrete never just stops in mid-air.
+   *
+   * This has to be a sheet that FOLLOWS THE TERRAIN, and the reason is worth
+   * writing down because two simpler versions of it have already shipped and
+   * both were wrong.
+   *
+   * A flat plane just under y = 0 cuts straight through the ground wherever the
+   * lap descends below it. Sinking it into a thick slab instead only moved the
+   * problem: a box from -12.1 to -0.1 still has its lid three metres ABOVE a
+   * park that drops to -3, and while rolling you never saw it — the chase
+   * camera sits inside the box, and a BoxGeometry's back faces are culled, so
+   * you look straight through. The moment a trick lifted the camera out through
+   * the lid, the lid occluded the entire park and the floor vanished.
+   *
+   * Tracking terrainHeight() fixes it at the root. The sheet is 6cm under the
+   * ground everywhere and features only ever rise, so nothing it could occlude
+   * is ever behind it, from any camera height. The 6cm is also what keeps it off
+   * the park's own surface out at x = +/-halfX, where no feature reaches and the
+   * two would otherwise z-fight.
+   */
+  buildApron() {
+    const REACH = 450; // out to the fog, which closes at 420m
+    const STEP = 4;
+    const xs = [-REACH, -this.halfX, this.halfX, REACH];
+    const z0 = -this.run * 1.5;
+    const z1 = this.run * 1.5;
+    const nz = Math.ceil((z1 - z0) / STEP);
+
+    const positions = new Float32Array(xs.length * (nz + 1) * 3);
+    const indices = [];
+    let p = 0;
+    for (let j = 0; j <= nz; j++) {
+      const z = z0 + (j / nz) * (z1 - z0);
+      const y = terrainHeight(z) - 0.06;
+      for (const x of xs) {
+        positions[p++] = x;
+        positions[p++] = y;
+        positions[p++] = z;
+      }
+    }
+    for (let j = 0; j < nz; j++) {
+      for (let i = 0; i < xs.length - 1; i++) {
+        const a = j * xs.length + i;
+        const c = a + xs.length;
+        indices.push(a, c, a + 1, a + 1, c, c + 1);
+      }
+    }
+
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(positions, 3));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+
+    // Unlit and fogged: it exists to meet the sky, not to be looked at.
+    return new Mesh(g, new MeshBasicMaterial({ color: 0x252a32 }));
   }
 
   // ----------------------------------------------------------- material ---
@@ -308,7 +360,10 @@ export default class ParkMesh extends Group {
   follow(riderZ) {
     const centre = Math.round(riderZ / this.run) * this.run;
     for (const tile of this.tiles) tile.position.z = centre + tile.userData.index * this.run;
-    this.haze.position.z = centre;
+    // Safe to slide the apron by the same amount: `centre` is always a whole
+    // number of run lengths and the terrain is periodic over one, so the
+    // profile it was baked with still lines up after the shift.
+    this.apron.position.z = centre;
   }
 }
 

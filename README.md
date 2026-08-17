@@ -9,7 +9,8 @@ the way you want it, and a catch to stop it flat before you land.
 
 Runs in the browser. Real multi-touch on a phone or tablet, keyboard on a
 desktop, no install. Every texture, sound and piece of geometry *in the game* is
-generated at runtime; the only files it downloads are the title card.
+generated at runtime; the only files it downloads are the two crops of the title
+card, and it fetches whichever one matches the shape of your screen.
 
 ```bash
 npm install
@@ -163,7 +164,7 @@ src/
   ui/        Hud
   audio/     Audio
 test/        headless sim + trick-vocabulary tests
-public/      splash.webp / splash.jpg — the title card, the only assets
+public/      splash{,-portrait}.{webp,jpg} — the title card, the only assets
 tools/       shoot.mjs   (drives the game in a browser and screenshots it)
              tune.mjs    (measures flick strength across frame rates)
              aspects.mjs (frames the HUD at four device shapes)
@@ -180,9 +181,11 @@ Nothing gameplay-affecting is a magic number anywhere else.
 ## Notes
 
 All code, geometry, textures and audio here are original and generated at
-runtime. The one exception is `public/splash.webp` (with a `.jpg` fallback), the
-title card — re-encode it from a source image with `tools/encode-splash.mjs`.
-Nothing the game renders depends on it. The slow-motion
+runtime. The one exception is the title card in `public/` — two crops of the key
+art, landscape and portrait, as WebP with a JPEG fallback each, swapped by a
+media query at square so an upright phone gets art composed for one. Re-encode
+them from the sources with `tools/encode-splash.mjs`. Nothing the game renders
+depends on any of it. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 

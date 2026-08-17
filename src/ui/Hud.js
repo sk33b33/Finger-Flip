@@ -282,6 +282,8 @@ const TEMPLATE = /* html */ `
 
 <div class="overlay overlay--splash js-start">
   <picture class="splash__art">
+    <source media="(max-aspect-ratio: 1/1)" srcset="${BASE}splash-portrait.webp" type="image/webp" />
+    <source media="(max-aspect-ratio: 1/1)" srcset="${BASE}splash-portrait.jpg" type="image/jpeg" />
     <source srcset="${BASE}splash.webp" type="image/webp" />
     <img class="js-splash-img" src="${BASE}splash.jpg" alt="Finger Flip" decoding="async" />
   </picture>
