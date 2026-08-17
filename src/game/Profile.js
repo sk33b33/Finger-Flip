@@ -32,7 +32,6 @@ function emptyStats() {
     bestTrick: null, // { name, points, map }
     airTime: 0,
     trickCounts: {},
-    grabCounts: {},
   };
 }
 
@@ -131,9 +130,6 @@ export default class Profile {
 
     s.tricksLanded++;
     s.trickCounts[breakdown.trick] = (s.trickCounts[breakdown.trick] || 0) + 1;
-    if (breakdown.grab) {
-      s.grabCounts[breakdown.grab] = (s.grabCounts[breakdown.grab] || 0) + 1;
-    }
     if (breakdown.comboAt > s.bestCombo) s.bestCombo = round2(breakdown.comboAt);
     if (!s.bestTrick || breakdown.points > s.bestTrick.points) {
       s.bestTrick = { name: breakdown.trick, points: breakdown.points, map: mapId };

@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import Config from '../core/Config.js';
+import { groundHeight } from './Park.js';
 
 /**
  * LandingDetector + BailController.
@@ -172,4 +173,68 @@ function clamp(v, a, b) {
 
 function clamp01(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * When and where a ballistic body meets the park.
+ *
+ * Marches the arc forward against the height field rather than solving it,
+ * because the ground it is falling toward is `h(x, z)` and may be rising to
+ * meet the board — a closed-form answer against y = 0 would be wrong on every
+ * ramp in the game.
+ *
+ * The TIME is the useful half. Slow motion keys its release off seconds
+ * remaining rather than a fraction of the flight, which is what makes the trick
+ * window the same length off a flat pop and off the big kicker.
+ *
+ * @returns {{t: number, point: Vector3}} world seconds until touchdown, and
+ *          where. `t` is 0 if the body is already at or below the surface, and
+ *          capped at MAX_LOOK if it somehow never lands.
+ */
+const TOUCHDOWN_STEP = 0.05;
+const TOUCHDOWN_MAX_LOOK = 4;
+
+export function predictTouchdown(position, velocity, out = new Vector3()) {
+  const g = Config.sim.gravity;
+
+  if (position.y <= groundHeight(position.x, position.z)) {
+    out.copy(position);
+    return { t: 0, point: out };
+  }
+
+  for (let t = TOUCHDOWN_STEP; t <= TOUCHDOWN_MAX_LOOK; t += TOUCHDOWN_STEP) {
+    const x = position.x + velocity.x * t;
+    const z = position.z + velocity.z * t;
+    const y = position.y + velocity.y * t + 0.5 * g * t * t;
+    const h = groundHeight(x, z);
+    if (y <= h) {
+      // Refine within the step it crossed in, by bisection. The march is coarse
+      // enough on its own to wobble the release point by a frame or two, which
+      // is exactly the kind of thing a time-based ramp would show as a stutter.
+      let lo = t - TOUCHDOWN_STEP;
+      let hi = t;
+      for (let i = 0; i < 12; i++) {
+        const mid = (lo + hi) * 0.5;
+        const my = position.y + velocity.y * mid + 0.5 * g * mid * mid;
+        const mh = groundHeight(position.x + velocity.x * mid, position.z + velocity.z * mid);
+        if (my <= mh) hi = mid;
+        else lo = mid;
+      }
+      out.set(
+        position.x + velocity.x * hi,
+        groundHeight(position.x + velocity.x * hi, position.z + velocity.z * hi),
+        position.z + velocity.z * hi,
+      );
+      return { t: hi, point: out };
+    }
+  }
+
+  // Never came down inside the horizon: fall back to a point ahead so callers
+  // that want somewhere to draw still get something sensible.
+  out.set(
+    position.x + velocity.x * 0.8,
+    groundHeight(position.x, position.z),
+    position.z + velocity.z * 0.8,
+  );
+  return { t: TOUCHDOWN_MAX_LOOK, point: out };
 }

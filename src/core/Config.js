@@ -18,7 +18,7 @@ export const Config = {
   board: {
     length: 0.82, // m, nose tip to tail tip
     width: 0.205,
-    // Distance from board centre to the point a finger grabs at each end.
+    // Distance from board centre to the point a finger works at each end.
     contactReach: 0.33,
     // Inverse inertia per local axis (x = pitch/lateral, y = yaw, z = roll/long).
     // A deck spins far more easily around its long axis than across it, which is
@@ -96,40 +96,39 @@ export const Config = {
     keyboardReturn: 2.2,
   },
 
-  grabs: {
-    // A hold only counts as a grab once it has lasted this long in real time.
-    // Shorter than this and it is a catch, not a grab.
-    minHold: 0.3,
-    minContact: 0.45,
-    // Zone boundaries in board-local metres.
-    railZone: 0.052, // beyond this from the centreline you are on a rail
-    tipZone: 0.3, // beyond this from centre you are on the nose or tail
-    frontTruckZ: 0.06, // splits the toe rail into mute (forward) and indy
-    // Scoring.
-    pointsPerSecondHeld: 190,
-    maxScoringHold: 3.2,
-    // A grabbed board is held against the feet, so it stops drifting away.
-    driftDamping: 5.5,
-  },
-
   nail: {
-    timeScale: 0.15, // world time scale while a finger is working the board
-    // With both fingers off the deck there is nothing to be precise about, so
-    // time runs on. This is what stops the trick window turning into a long
-    // wait for the board to come back round. Set it equal to timeScale for a
-    // flat, old-school slow-motion window.
-    idleTimeScale: 0.38,
-    idleRamp: 0.22, // real seconds to slide between the two
-    enterDuration: 0.16, // real seconds to ramp into slow motion
-    exitDuration: 0.2, // real seconds to ramp back out
-    // Slow motion relaxes on its own over the last stretch of the flight, so
-    // the landing never crawls even if the player never commits. Measured as a
-    // fraction of the flight rather than a height, so it behaves the same off a
-    // flat pop and off the big kicker.
-    releaseFrom: 0.72, // flight fraction where time starts winding back up
-    releaseTimeScale: 0.5,
+    // One time scale for the whole window. There used to be two — a deep one
+    // while a finger was working the deck and a faster one when both were off
+    // it — and the flip between them was a visible surge every time a finger
+    // left the board. A trick window you can feel changing speed underneath you
+    // is not a window, it is a moving target.
+    timeScale: 0.12,
+    // Long ramps. These are what make it read as the world easing down rather
+    // than a switch being thrown, and they cost nothing but patience.
+    enterDuration: 0.28, // real seconds to ramp into slow motion
+    exitDuration: 0.34, // real seconds to ramp back out
+    // Slow motion relaxes on its own as the ground comes up, so the landing is
+    // never a crawl.
+    //
+    // Measured in WORLD SECONDS UNTIL TOUCHDOWN, not as a fraction of the
+    // flight. That is the whole difference: a fraction stretches with how high
+    // you got, so the same trick felt different off the big kicker than off a
+    // flat pop. Seconds-to-the-floor is a physical quantity and is identical
+    // off both. sim/Landing.js#predictTouchdown supplies it.
+    //
+    // It has to fit inside the SHORTEST flight in the game or the smallest pop
+    // spends its whole airtime winding out and never gets a flat window at all
+    // — which would be the same height dependence back in a new costume. A
+    // minimum pop (pop.minUp 5.4 m/s) flies 2v/g = 0.70 world seconds, so this
+    // leaves even that one half its window at full depth.
+    releaseWithin: 0.35,
+    releaseTimeScale: 0.55,
     meterMax: 1.0,
-    meterDrainPerSecondReal: 0.12,
+    // Halved along with the time scale. The window used to average around 0.25
+    // once the idle speed-up is counted; flat at 0.12 it takes roughly twice as
+    // long in real seconds, and on the old drain a single trick off a decent
+    // launch emptied the meter before the wheels touched.
+    meterDrainPerSecondReal: 0.06,
     meterGainPerTrick: 0.42,
     meterGainPerSecondRolling: 0.085,
     meterMinToActivate: 0.18,
@@ -169,6 +168,10 @@ export const Config = {
     // Turns per real second: a whole revolution would take half a minute.
     trickOrbitRate: 0.03,
     trickOrbitStart: 0,
+    // And the same idea for the chase shot, but only while the world is
+    // stopped. Turns per real second: a whole lap of the rider takes a minute,
+    // which is enough to read as alive without being a fairground ride.
+    idleOrbitRate: 0.017,
     // Landing area must stay on screen: the camera pulls back as the board
     // falls. Proportional to the fitted range, not a fixed distance, or the
     // pullback dwarfs the shot on a viewport that framed in close.
@@ -186,16 +189,26 @@ export const Config = {
     cleanYawDeg: 28,
     roughYawDeg: 50,
     // Residual spin at touchdown.
+    //
+    // The bail thresholds here and below are deliberately generous. Landing
+    // resolves on its own the instant the wheels touch, so the deal with the
+    // player is simply: straighten the deck before then and you ride away. A
+    // board that has come round flat but is still turning THROUGH flat has been
+    // straightened out, and slamming it made the deal a lie. The tiers below
+    // bail are untouched — a scruffy landing still rides away for 0.15x, this
+    // only moves where "badly" becomes "not at all".
     perfectSpin: 1.6,
     cleanSpin: 3.4,
     roughSpin: 6.2,
-    bailSpin: 9.5,
+    bailSpin: 13.5,
     // How far the board may drift out from under the rider.
     perfectDrift: 0.16,
     cleanDrift: 0.32,
     roughDrift: 0.55,
-    bailDrift: 0.78,
-    // Wheels-down check: board up must not be inverted.
+    bailDrift: 1.15,
+    // Wheels-down check: board up must not be inverted. This one stays tight —
+    // a deck landing upside down is the one thing that is definitively NOT
+    // straightened out, so it is the only unconditional bail left.
     invertedBailDeg: 74,
   },
 

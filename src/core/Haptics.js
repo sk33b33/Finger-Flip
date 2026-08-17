@@ -12,7 +12,6 @@ const SUPPORTED =
 const PATTERNS = {
   pop: 14,
   flick: 9,
-  grab: [0, 10, 24, 10],
   catch: 18,
   land: 26,
   perfect: [0, 18, 30, 26],

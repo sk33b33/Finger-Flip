@@ -102,11 +102,11 @@ export default class FingerFlipController {
 
     this.halfLength = Config.board.length * 0.5;
     this.halfWidth = Config.board.width * 0.5;
-    // How far the deck can be from the fingertip and still be grabbed. This is
+    // How far the deck can be from the fingertip and still be in contact. This is
     // the reach of the mechanic: a board rolled past about 35 degrees has moved
     // out from under a finger placed near the bolts, which is why you catch a
     // flip as it comes back around flat rather than whenever you like.
-    this.grabThickness = 0.13;
+    this.contactThickness = 0.13;
   }
 
   reset() {
@@ -288,7 +288,7 @@ export default class FingerFlipController {
 
   /** How close the deck plane is to the fingertip. Returns 0..1. */
   slab(d) {
-    return 1 - smoothstep(this.grabThickness * 0.45, this.grabThickness, Math.abs(d));
+    return 1 - smoothstep(this.contactThickness * 0.45, this.contactThickness, Math.abs(d));
   }
 }
 

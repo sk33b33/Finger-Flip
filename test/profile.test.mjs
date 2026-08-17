@@ -30,8 +30,6 @@ function fakeStore(initial = {}) {
 function trick(over = {}) {
   return {
     trick: 'Kickflip',
-    grab: null,
-    grabHold: 0,
     bodyTurns: 0,
     quality: 'CLEAN',
     points: 900,
@@ -144,7 +142,7 @@ test('every challenge is well formed', () => {
 test('a challenge never scores a bail', () => {
   // Every one of these is "land something", so a slam must not count toward any
   // of them — including the ones that only look at a number on the breakdown.
-  const bail = { type: 'trick', mapId: 'funrun', breakdown: trick({ quality: 'BAIL', grabHold: 9, comboAt: 6, lateCatch: true, bodyTurns: 1 }) };
+  const bail = { type: 'trick', mapId: 'funrun', breakdown: trick({ quality: 'BAIL', comboAt: 6, lateCatch: true, bodyTurns: 1 }) };
   for (const c of CHALLENGES) {
     assert.equal(c.track(bail), 0, `${c.id} scored a bail`);
   }

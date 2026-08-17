@@ -40,14 +40,6 @@ export const CHALLENGES = [
     track: (ev) => (ev.type === 'trick' && named(ev, '360 Flip') ? 1 : 0),
   },
   {
-    id: 'grab-2s',
-    name: 'Hold It',
-    blurb: 'Hold a grab for two seconds.',
-    goal: 1,
-    unit: 'held',
-    track: (ev) => (ev.type === 'trick' && landed(ev) && ev.breakdown.grabHold >= 2 ? 1 : 0),
-  },
-  {
     id: 'perfect-5',
     name: 'Bolts',
     blurb: 'Land five tricks perfectly.',
@@ -121,9 +113,8 @@ function landed(ev) {
 }
 
 /**
- * Matches a trick by name, allowing for the prefixes the recogniser adds —
- * "Fakie Kickflip" and "Nollie Kickflip" are kickflips, and a "Kickflip Indy"
- * still counts as one.
+ * Matches a trick by name, allowing for the prefixes and suffixes the
+ * recogniser adds — "Fakie Kickflip" and "Kickflip 180" are both kickflips.
  */
 function named(ev, name) {
   return landed(ev) && String(ev.breakdown.trick).includes(name);
@@ -145,7 +136,7 @@ export function dayIndex(now = new Date()) {
  */
 export function dailyChallenges(day = dayIndex()) {
   const n = CHALLENGES.length;
-  const stride = 5; // coprime with 12
+  const stride = 5; // coprime with 11
   const out = [];
   for (let i = 0; i < DAILY_COUNT; i++) {
     out.push(CHALLENGES[(day * stride + i * 4) % n]);

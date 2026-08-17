@@ -11,8 +11,9 @@ import { Vector3, Quaternion } from 'three';
 import Board from '../src/sim/Board.js';
 import FingerFlipController from '../src/sim/Fingers.js';
 import { recognise } from '../src/sim/Tricks.js';
-import { evaluateLanding, Quality } from '../src/sim/Landing.js';
+import { evaluateLanding, predictTouchdown, Quality } from '../src/sim/Landing.js';
 import Config from '../src/core/Config.js';
+import { nailScale } from '../src/core/GameTime.js';
 import {
   runLength,
   groundHeight,
@@ -202,13 +203,38 @@ test('landing upside down bails', () => {
   assert.equal(r.quality, Quality.BAIL);
 });
 
-test('a board still spinning at touchdown bails', () => {
+test('a flat board still turning rides away, badly', () => {
+  // The deal with the player is that straightening the deck before the wheels
+  // touch is enough. A board that has come round flat but is still turning
+  // THROUGH flat has been straightened out, so it lands — scruffily, for a
+  // fraction of the points, but it lands. This used to slam.
   const board = new Board();
   board.reset(new Vector3(0, 0, 20), 0);
   board.angularVelocity.set(0, 0, 12);
   const r = evaluateLanding(board, new Vector3(0, 1, 0), new Vector3(0, 0, 1), new Vector3(0, 0, 20));
+  assert.notEqual(r.quality, Quality.BAIL, 'a level deck should not slam on spin alone');
+  assert.equal(r.quality, Quality.SLAM, `expected a scruffy landing, got ${r.quality}`);
+  assert.ok(r.reasons.some((s) => /caught/i.test(s)), 'and it should still say why it scored badly');
+});
+
+test('a board spinning wildly at touchdown still bails', () => {
+  // Generous is not infinite. Past the threshold there is no landing it.
+  const board = new Board();
+  board.reset(new Vector3(0, 0, 20), 0);
+  board.angularVelocity.set(0, 0, Config.landing.bailSpin + 3);
+  const r = evaluateLanding(board, new Vector3(0, 1, 0), new Vector3(0, 0, 1), new Vector3(0, 0, 20));
   assert.equal(r.quality, Quality.BAIL);
-  assert.ok(r.reasons.some((s) => /caught/i.test(s)));
+});
+
+test('an upside-down board bails however still it is', () => {
+  // The one unconditional bail left: a deck landing inverted is definitively
+  // not "straightened out", so no amount of relaxing the other terms saves it.
+  const board = new Board();
+  board.reset(new Vector3(0, 0, 20), 0);
+  board.quaternion.setFromAxisAngle(new Vector3(0, 0, 1), Math.PI);
+  board.angularVelocity.set(0, 0, 0);
+  const r = evaluateLanding(board, new Vector3(0, 1, 0), new Vector3(0, 0, 1), new Vector3(0, 0, 20));
+  assert.equal(r.quality, Quality.BAIL);
 });
 
 test('trick recogniser names combined rotations', () => {
@@ -538,4 +564,125 @@ test('terrainHeight wraps like the park does', () => {
       );
     }
   });
+});
+
+// -------------------------------------------------- touchdown & pacing ----
+
+test('predictTouchdown solves a fall onto flat ground', () => {
+  setLayout('funrun');
+  // Dropped from 2m over the flat run-in with no horizontal speed:
+  // t = sqrt(2h / g).
+  const expected = Math.sqrt((2 * 2) / -Config.sim.gravity);
+  const { t, point } = predictTouchdown(new Vector3(0, 2, 10), new Vector3(0, 0, 0));
+  assert.ok(Math.abs(t - expected) < 0.01, `expected ${expected.toFixed(3)}s, got ${t.toFixed(3)}`);
+  assert.ok(Math.abs(point.y) < 1e-6, 'should land on the ground, not through it');
+});
+
+test('predictTouchdown accounts for ground rising to meet the board', () => {
+  // The whole reason it marches instead of solving: the surface is h(x, z), and
+  // over a kicker it comes UP at the falling board. Solving against y = 0 would
+  // put the landing late every time.
+  setLayout('funrun');
+  const from = new Vector3(0, 1.5, 27); // already over the warm-up kicker (z 26-32)
+  const vel = new Vector3(0, 0, 9.5);
+  const onRamp = predictTouchdown(from, vel).t;
+  const flat = Math.sqrt((2 * 1.5) / -Config.sim.gravity);
+  assert.ok(onRamp < flat, `ramp should be met sooner: ${onRamp.toFixed(3)} vs ${flat.toFixed(3)}`);
+  const { point } = predictTouchdown(from, vel);
+  assert.ok(
+    Math.abs(point.y - groundHeight(point.x, point.z)) < 1e-6,
+    'the predicted point must be ON the surface',
+  );
+});
+
+test('a board already on the floor has no time left', () => {
+  setLayout('funrun');
+  assert.equal(predictTouchdown(new Vector3(0, -1, 10), new Vector3(0, -3, 0)).t, 0);
+});
+
+test('slow motion holds one flat scale, then eases out near the floor', () => {
+  const N = Config.nail;
+  // Flat for the bulk of the flight.
+  for (const t of [3.0, 1.5, N.releaseWithin + 0.01]) {
+    assert.equal(nailScale(t), N.timeScale, `should still be flat at ${t}s out`);
+  }
+  // Then monotonically quicker as the ground comes up — no corner, no reversal.
+  let prev = N.timeScale;
+  for (let t = N.releaseWithin; t >= 0; t -= 0.02) {
+    const s = nailScale(t);
+    assert.ok(s >= prev - 1e-9, `time scale went backwards at ${t.toFixed(2)}s out`);
+    assert.ok(s <= N.releaseTimeScale + 1e-9, 'and never overshoots the release scale');
+    prev = s;
+  }
+  assert.ok(Math.abs(nailScale(0) - N.releaseTimeScale) < 1e-9, 'and arrives at it');
+});
+
+test('the wind-out lasts the same time off a big launch and a small one', () => {
+  // This is the point of keying the release to seconds-to-the-floor rather than
+  // a fraction of the flight. Under the old scheme the release fired at 72% of
+  // the flight whatever that was worth, so a big launch got seconds of easing
+  // and a flat pop got a fraction of one. Now every trick gets the same run-in
+  // to the floor.
+  setLayout('funrun');
+  const g = -Config.sim.gravity;
+  const N = Config.nail;
+
+  /**
+   * Flies a whole arc from takeoff at `vy0` and reports where the pacing
+   * changes: how long before touchdown the ease-out starts, and how far
+   * through the flight that is. From takeoff, not from the apex — the rise is
+   * half the window and the player is working the board through it.
+   */
+  function windOut(vy0) {
+    const dt = 0.002;
+    // The board leaves the ground riding a few centimetres above it. Starting
+    // the probe at exactly y = 0 reads as already landed and the whole flight
+    // scores as zero seconds out.
+    const y0 = 0.06;
+    const flight = (vy0 + Math.sqrt(vy0 * vy0 + 2 * g * y0)) / g;
+    for (let elapsed = 0; elapsed <= flight; elapsed += dt) {
+      const y = y0 + vy0 * elapsed - 0.5 * g * elapsed * elapsed;
+      const vy = vy0 - g * elapsed;
+      const { t } = predictTouchdown(new Vector3(0, Math.max(y, 0), 10), new Vector3(0, vy, 0));
+      if (nailScale(t) > N.timeScale + 1e-9) {
+        return { secondsLeft: t, fraction: elapsed / flight, height: y, flight };
+      }
+    }
+    return null;
+  }
+
+  // The smallest pop the game can produce, and a launch off the big kicker.
+  const small = windOut(Config.pop.minUp);
+  const big = windOut(Config.pop.maxUp + 4);
+  assert.ok(small && big, 'both flights should reach the ease-out');
+  assert.ok(big.flight > small.flight * 1.9, 'the two flights must really differ');
+
+  // The thing that must match: seconds of run-in to the floor.
+  assert.ok(
+    Math.abs(small.secondsLeft - big.secondsLeft) < 0.01,
+    `wind-out started ${small.secondsLeft.toFixed(3)}s out vs ${big.secondsLeft.toFixed(3)}s`,
+  );
+  assert.ok(
+    Math.abs(small.secondsLeft - N.releaseWithin) < 0.01,
+    `and it should be releaseWithin (${N.releaseWithin}s), got ${small.secondsLeft.toFixed(3)}`,
+  );
+
+  // And the thing that is now allowed to differ, which is exactly what the old
+  // fraction-of-flight release got wrong: a taller launch spends a smaller
+  // share of its descent winding out, and a greater height, because it arrives
+  // at the floor faster. Same seconds, different fraction.
+  assert.ok(
+    big.fraction > small.fraction + 0.1,
+    `the big launch should ease out later in its flight: ${big.fraction.toFixed(2)} vs ${small.fraction.toFixed(2)}`,
+  );
+  assert.ok(big.height > small.height, 'and from higher up, since it is falling faster');
+
+  // And every flight keeps a real flat window, including the smallest one there
+  // is. Without this the shortest pop would spend its whole airtime winding out
+  // and never be properly slowed at all — the same height dependence in a new
+  // costume.
+  assert.ok(
+    small.fraction > 0.4,
+    `even a minimum pop should hold full depth for most of its flight, got ${small.fraction.toFixed(2)}`,
+  );
 });

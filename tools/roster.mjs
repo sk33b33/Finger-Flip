@@ -29,7 +29,11 @@ page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));
 
 await page.goto('http://localhost:5195/', { waitUntil: 'load' });
 await page.waitForTimeout(3500);
+// Tap the title card to reach the hub, then Drop In — which is the only thing
+// that starts the skater skating. Nothing simulates until it is pressed.
 await page.click('.js-start');
+await page.waitForTimeout(600);
+await page.click('[data-action="play"]');
 await page.waitForTimeout(1200);
 
 const roster = await page.evaluate(async () => {

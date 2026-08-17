@@ -229,7 +229,6 @@ export default class Shell {
   statsHtml() {
     const s = this.profile.stats;
     const tricks = Object.entries(s.trickCounts).sort((a, b) => b[1] - a[1]);
-    const grabs = Object.entries(s.grabCounts).sort((a, b) => b[1] - a[1]);
     const landRate = s.tricksLanded + s.bails > 0
       ? Math.round((s.tricksLanded / (s.tricksLanded + s.bails)) * 100)
       : 0;
@@ -277,17 +276,7 @@ export default class Shell {
             : '<div class="rows__empty">Nothing yet.</div>'
         }</div>
       </div>
-
-      ${
-        grabs.length
-          ? `<div class="section">
-               <div class="section__h">Grabs held</div>
-               <div class="rows">${grabs
-                 .map(([n, c]) => `<div class="rows__row">${esc(n)}<b>${num(c)}</b></div>`)
-                 .join('')}</div>
-             </div>`
-          : ''
-      }`;
+`;
   }
 
   settingsHtml() {
@@ -324,7 +313,7 @@ export default class Shell {
             In the air, a finger on each end of the board. Slide off the
             <b>toe rail</b> for a kickflip, the <b>heel rail</b> for a heelflip,
             scoop across the tail for a shove-it. Plant a finger back on the
-            deck to catch it; hold that plant and it becomes a grab.
+            deck to catch it — that is the whole skill.
           </p>
           <p class="keys" style="margin:0">
             Keyboard fingers: <b>WASD</b> and the <b>arrow keys</b>.

@@ -46,11 +46,11 @@ for (const [shape, width, height] of SHAPES) {
   await page.evaluate(() => {
     const g = window.FF.game;
     g.profile.recordTrick(
-      { trick: 'Kickflip', grab: null, grabHold: 0, quality: 'PERFECT', points: 1840, comboAt: 1.6, lateCatch: true, airTime: 1.2 },
+      { trick: 'Kickflip', quality: 'PERFECT', points: 1840, comboAt: 1.6, lateCatch: true, airTime: 1.2 },
       'funrun',
     );
     g.profile.recordTrick(
-      { trick: '360 Flip', grab: 'Indy', grabHold: 1.1, quality: 'CLEAN', points: 3120, comboAt: 2.1, lateCatch: false, airTime: 1.5 },
+      { trick: '360 Flip', quality: 'CLEAN', points: 3120, comboAt: 2.1, lateCatch: false, airTime: 1.5 },
       'vert',
     );
     g.profile.recordTrick({ trick: 'Heelflip', quality: 'BAIL', points: 0, comboAt: 1 }, 'slope');

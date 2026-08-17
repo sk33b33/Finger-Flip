@@ -38,7 +38,6 @@ presses:
 | Slow, deliberate drag out to a **tip** | Impossible |
 | Two flicks in one flight | Doubles |
 | **Plant** a finger back on the spinning deck | Catch — stops the rotation dead |
-| **Hold** that plant on a rail or a tip | Grab — Indy, Melon, Mute, Nosegrab, Tailgrab, Stalefish |
 | **Carve** as you pop | Body spin — 180, 360 |
 
 The catch is the skill. A flick starts the board spinning; it keeps spinning
@@ -46,19 +45,15 @@ until something stops it. Put a finger back on the deck as it comes round flat
 and you keep exactly the rotation you had at that moment. Catch late and you
 score more.
 
-A **grab is not a separate control** — it is that same catch, held on. Keep hold
-of a rail or a tip past a third of a second and it earns a name, and the longer
-you hold it the more it pays. Which means the order matters exactly as it does
-on a real board: flick, let it come round, *then* grab. Grab too early and you
-smother the flip.
-
 **Body spin** comes from the carve you are already doing. Whatever you are
 steering at the instant you pop is carried into the air as rider rotation, so a
 committed turn into a kicker gives you a 180 and a hard one gives you a 360.
 The fingers never have to leave the deck to do it.
 
-Press `Space` (or the **LAND IT** button) to drop out of slow motion and take
-the landing whenever you are ready.
+**Landing takes itself.** There is no button and nothing to commit: the trick
+ends the instant the wheels touch. Get the deck straightened out before then and
+you ride away. Slow motion eases back toward normal over the last stretch of the
+fall on its own, so the landing is never a crawl.
 
 **Keyboard fingers.** `W A S D` drives one finger, the arrow keys the other —
 a direct stand-in for the two touch points, so tricks are identical on both.
@@ -67,8 +62,9 @@ a direct stand-in for the two touch points, so tricks are identical on both.
 `Esc` menu · `H` controls · `R` restart the run · `M` mute · `P` cycle render quality
 
 **The menu** is the hub: pick a park, pick a rider, see today's three challenges
-and everything you have landed. It opens over the running game rather than
-replacing it, so the park is still there under the blur.
+and everything you have landed. **Drop In** is the only thing that starts you
+skating — closing the menu resumes the run you already have, and nothing at all
+simulates while the menu is open or while the title card is up.
 
 The HUD is deliberately sparse: the trick readout is a translucent strip across
 the top that only appears while you are in the air, speed sits bottom-right, and
@@ -149,10 +145,13 @@ so an identical flick delivers an identical spin rate whatever the time scale
 is — what slow motion buys you is real seconds to act in, not extra force.
 There is a test for exactly that.
 
-The time scale is also responsive: it sits deepest while a finger is working the
-deck and runs on when both are off it, so waiting for the board to come round
-never becomes dead time. Set `Config.nail.idleTimeScale` equal to
-`Config.nail.timeScale` for a flat, old-school slow-motion window.
+The window is flat — one time scale throughout — and it winds back toward normal
+over the last **`Config.nail.releaseWithin` world seconds before touchdown**.
+Seconds to the floor, not a fraction of the flight: a fraction stretches with how
+high you got, so the same trick felt different off the big kicker than off a flat
+pop. `sim/Landing.js#predictTouchdown` supplies the number by marching the arc
+against the height field, and `core/GameTime.js#nailScale` is the pure function
+that shapes it, so the property can be tested rather than eyeballed.
 
 ### Everything else
 
@@ -196,7 +195,7 @@ never becomes dead time. Set `Config.nail.idleTimeScale` equal to
 ```
 src/
   core/      Config (every tunable value), GameTime, Input, Haptics
-  sim/       Board, Skater, Fingers, Tricks, Grabs, Landing,
+  sim/       Board, Skater, Fingers, Tricks, Landing,
              Park + Layouts (the three parks) — renderer-free
   game/      Game (state machine), FingerMapper, Score, Profile, Events
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,

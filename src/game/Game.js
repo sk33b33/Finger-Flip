@@ -1,7 +1,7 @@
 import { Vector3, Quaternion, MathUtils } from 'three';
 
 import Config from '../core/Config.js';
-import GameTime from '../core/GameTime.js';
+import GameTime, { nailScale } from '../core/GameTime.js';
 import Input from '../core/Input.js';
 import Haptics from '../core/Haptics.js';
 
@@ -9,8 +9,7 @@ import Board from '../sim/Board.js';
 import Skater from '../sim/Skater.js';
 import FingerFlipController from '../sim/Fingers.js';
 import { recognise, describeSpin, fullName, quantiseBodySpin } from '../sim/Tricks.js';
-import { evaluateLanding, previewLanding, Quality } from '../sim/Landing.js';
-import GrabTracker from '../sim/Grabs.js';
+import { evaluateLanding, previewLanding, predictTouchdown, Quality } from '../sim/Landing.js';
 import { groundHeight, groundNormal, isLip, setLayout, getLayout } from '../sim/Park.js';
 
 import ScoreSystem, { NailMeter } from './Score.js';
@@ -74,7 +73,6 @@ export default class Game {
     this.skater = new Skater();
     this.board = new Board();
     this.fingers = new FingerFlipController();
-    this.grabs = new GrabTracker();
     this.mapper = new FingerMapper(this.input, this.fingers);
     this.score = new ScoreSystem();
     this.meter = new NailMeter();
@@ -95,12 +93,11 @@ export default class Game {
 
     this.hud = new Hud(container);
     this.hud.onStart(() => this.enterMenu());
-    this.hud.onCommit(() => this.commitLanding());
     this.hud.onMenu(() => this.enterMenu());
 
     this.shell = new Shell(container, this.profile);
     this.shell
-      .on('play', () => this.leaveMenu())
+      .on('play', () => this.startRun())
       .on('close', () => this.leaveMenu())
       .on('tab', (tab) => this.shell.show(tab))
       .on('map', (id) => {
@@ -165,12 +162,16 @@ export default class Game {
 
   // ------------------------------------------------------------ lifecycle ---
 
+  /** True whenever the world should be standing still. */
+  get paused() {
+    return !this.started || this.inMenu;
+  }
+
   // ----------------------------------------------------------------- menu ---
 
   /**
-   * Open the hub. The game carries on rendering underneath — the rider keeps
-   * rolling, which is what the title card has always done — so this only has to
-   * stop reading input for the run.
+   * Open the hub. The world stops; the camera does not, so the backdrop reads
+   * as a held shot rather than a hung frame.
    */
   enterMenu() {
     this.hud.hideStart();
@@ -182,14 +183,24 @@ export default class Game {
     this.shell.open(this.menuState());
   }
 
+  /** Close the menu and pick the run back up where it was. */
   leaveMenu() {
     this.inMenu = false;
     this.shell.close();
-    if (!this.started) {
-      this.started = true;
-      this.resetRun();
-      this.hud.setHint('H for controls');
-    }
+  }
+
+  /**
+   * Drop in. The ONLY thing that starts the skater skating — closing the menu
+   * does not, tapping the title card does not, and neither does any key. So
+   * `close` resumes a run you already have and `startRun` begins a new one,
+   * which is exactly what those two controls say they do.
+   */
+  startRun() {
+    this.started = true;
+    this.inMenu = false;
+    this.shell.close();
+    this.resetRun();
+    this.hud.setHint('H for controls');
   }
 
   /** Re-render the open menu in place, after something it shows has changed. */
@@ -262,7 +273,6 @@ export default class Game {
     this.board.snapshot();
     this.skater.snapshot();
     this.fingers.reset();
-    this.grabs.reset();
     this.mapper.reset();
     this.score.reset();
     this.meter.reset();
@@ -293,10 +303,17 @@ export default class Game {
       this.updateFingers(rd);
     }
 
-    for (let i = 0; i < steps; i++) {
-      this.board.snapshot();
-      this.skater.snapshot();
-      this.stepSim(Config.sim.fixedStep);
+    // The world only advances while a run is actually in progress. Rendering,
+    // the camera and the UI carry on regardless — they run on real time — but
+    // nothing simulates behind the title card or behind an open menu. It used
+    // to: the gate above covered INPUT only, so the rider went on rolling,
+    // hitting lips and slamming while you were reading the stats screen.
+    if (!this.paused) {
+      for (let i = 0; i < steps; i++) {
+        this.board.snapshot();
+        this.skater.snapshot();
+        this.stepSim(Config.sim.fixedStep);
+      }
     }
 
     this.updatePresentation(rd);
@@ -308,8 +325,10 @@ export default class Game {
   handleGlobalKeys() {
     const i = this.input;
     if (i.pressed('Escape')) {
-      if (this.inMenu) this.leaveMenu();
-      else this.enterMenu();
+      // Before the first Drop In there is no run to go back to, so Escape has
+      // nothing to close onto — the shell hides its own ✕ for the same reason.
+      if (!this.inMenu) this.enterMenu();
+      else if (this.started) this.leaveMenu();
       return;
     }
     // Everything below drives the run, and none of it should fire through an
@@ -370,7 +389,8 @@ export default class Game {
       }
     } else {
       this.controls = { steer: 0, push: 0, brake: 0, charging: false };
-      if (this.state === State.AIR && i.pressed('Space')) this.commitLanding();
+      // Nothing else is bound in the air. The only controls up there are the two
+      // fingers, and the landing takes itself the moment the wheels touch.
     }
   }
 
@@ -416,20 +436,6 @@ export default class Game {
     if (this.fingers.caught && !caughtBefore) {
       this.audio.catchSound(this.fingers.catchStrength);
       this.haptics.fire('catch');
-    }
-
-    const wasGrabbing = this.grabs.isGrabbing;
-    this.grabs.update(this.fingers, rd);
-    if (this.grabs.isGrabbing && !wasGrabbing) {
-      this.audio.grab();
-      this.haptics.fire('grab');
-    }
-
-    // A grabbed board is held against the feet, so it stops drifting away.
-    if (this.grabs.isGrabbing) {
-      const hold = Math.max(0, 1 - Config.grabs.driftDamping * rd);
-      this.board.velocity.x = MathUtils.lerp(this.skater.velocity.x, this.board.velocity.x, hold);
-      this.board.velocity.z = MathUtils.lerp(this.skater.velocity.z, this.board.velocity.z, hold);
     }
   }
 
@@ -522,7 +528,6 @@ export default class Game {
     this.board.angularVelocity.set(Config.pop.pitchKick, 0, 0);
 
     this.fingers.reset();
-    this.grabs.reset();
     this.mapper.reset();
     this.mapper.homeKeyFingers();
     this.cameraRig.beginTrick(this.skater);
@@ -565,13 +570,6 @@ export default class Game {
     this.audio.timeWarpOut();
   }
 
-  /** Player chose to drop out of slow motion and take the landing. */
-  commitLanding() {
-    if (this.state !== State.AIR || !this.nailActive) return;
-    this.exitNail();
-    this.hud.showPrompt('COMMITTED', 0.7);
-  }
-
   resolveLanding() {
     const s = this.skater;
     groundNormal(s.position.x, s.position.z, _n);
@@ -579,9 +577,8 @@ export default class Game {
 
     const landing = evaluateLanding(this.board, _n, _travel, s.position);
     const trick = recognise(this.board.spin);
-    const grab = this.grabs.score();
     const bodyTurns = quantiseBodySpin(s.airYaw);
-    const name = fullName(trick, grab.name, bodyTurns);
+    const name = fullName(trick, bodyTurns);
     this.lastTrick = { ...trick, name };
 
     const hands = {
@@ -599,7 +596,7 @@ export default class Game {
     this.exitNail();
     this.flash = landing.quality === Quality.BAIL ? 0.28 : 0.14 + landing.score * 0.2;
 
-    const result = this.score.award(trick, landing, flight, hands, { grab, bodyTurns, name });
+    const result = this.score.award(trick, landing, flight, hands, { bodyTurns, name });
     this.recordProgress({ type: 'trick', breakdown: result, mapId: this.map.id });
 
     if (landing.quality === Quality.BAIL) {
@@ -733,21 +730,11 @@ export default class Game {
         this.exitNail();
         this.hud.showPrompt('METER OUT', 0.9);
       } else {
-        // Let time creep back up as the ground approaches, so the landing is
-        // never a crawl even if the player never commits.
-        const R = Config.nail;
-
-        // Deepest slow motion only while a finger is on the job.
-        const working = this.fingers.fingers.some((f) => f.active || f.contact > 0.05);
-        let target = working ? R.timeScale : R.idleTimeScale;
-
-        // And time winds back up over the last stretch regardless, so the
-        // landing never crawls even if the player never commits.
-        if (this.flightT > R.releaseFrom) {
-          const t = MathUtils.clamp((this.flightT - R.releaseFrom) / (1 - R.releaseFrom), 0, 1);
-          target = MathUtils.lerp(target, R.releaseTimeScale, t);
-        }
-        this.time.requestScale(target, R.idleRamp);
+        // One flat scale, easing back toward normal over the last stretch
+        // before the wheels touch — measured in seconds to the floor, so the
+        // window is the same length whatever height the trick was launched at.
+        const { t } = predictTouchdown(this.board.position, this.board.velocity, _predicted);
+        this.time.requestScale(nailScale(t), Config.nail.enterDuration);
       }
     }
 
@@ -808,6 +795,7 @@ export default class Game {
       skater: this.skater,
       board: this.board,
       flightT: this.flightT,
+      paused: this.paused,
     });
     // The rider ghosts out ahead of the camera arriving, so the deck is never
     // behind a thigh at the moment the player needs to read it.
@@ -856,8 +844,7 @@ export default class Game {
     let liveTrick = this.lastTrick;
     if (this.state === State.AIR) {
       const t = recognise(this.board.spin);
-      const held = this.grabs.isGrabbing ? this.grabs.liveName : null;
-      liveTrick = { ...t, name: fullName(t, held, quantiseBodySpin(this.skater.airYaw)) };
+      liveTrick = { ...t, name: fullName(t, quantiseBodySpin(this.skater.airYaw)) };
     }
     this.hud.update({
       realDelta: rd,
@@ -871,8 +858,6 @@ export default class Game {
       trickName: liveTrick.name,
       spin: describeSpin(this.board.spin),
       bodySpin: this.state === State.AIR ? this.skater.airYaw : 0,
-      grab: this.state === State.AIR && this.grabs.isGrabbing ? this.grabs.liveName : null,
-      grabHold: this.grabs.currentHold,
       landingQuality,
     });
 
@@ -920,7 +905,6 @@ function estimateAirTime(skater) {
 
 function buildNote(result, landing) {
   const bits = [];
-  if (result.grab && result.grabHold > 0.6) bits.push(`${result.grabHold.toFixed(1)}s grab`);
   if (result.repeated) bits.push('repeat — half score');
   if (result.lateCatch) bits.push('late catch');
   else if (result.caught) bits.push('caught');

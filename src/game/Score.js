@@ -33,11 +33,10 @@ export default class ScoreSystem {
    * @param {object} landing result from evaluateLanding()
    * @param {object} flight  { airTime, peakHeight, takeoffSpeed }
    * @param {object} hands   { flicks, caught, catchStrength, catchAt }
-   * @param {object} extras  { grab, bodyTurns, name }
+   * @param {object} extras  { bodyTurns, name }
    */
   award(trick, landing, flight, hands, extras = {}) {
     const S = Config.score;
-    const grab = extras.grab || { name: null, points: 0, difficulty: 1, hold: 0 };
     const bodyTurns = extras.bodyTurns || 0;
 
     const rotationPoints =
@@ -63,14 +62,14 @@ export default class ScoreSystem {
       stylePoints += S.styleSmoothness / hands.flicks;
     }
 
-    const base = trick.base + rotationPoints + airPoints + stylePoints + grab.points;
+    const base = trick.base + rotationPoints + airPoints + stylePoints;
 
     // How close the rotation landed to a named, whole trick.
     const styleMultiplier = 0.8 + 0.4 * Math.max(0, 1 - trick.error * 1.6);
     const landingMultiplier =
       S.landingMultiplier[landing.quality] * (0.75 + 0.25 * landing.score);
 
-    const raw = base * trick.difficulty * grab.difficulty * styleMultiplier * landingMultiplier;
+    const raw = base * trick.difficulty * styleMultiplier * landingMultiplier;
 
     const displayName = extras.name || trick.name;
     const repeated = displayName === this.lastTrickName && displayName !== 'Ollie';
@@ -81,8 +80,6 @@ export default class ScoreSystem {
     const bailed = landing.quality === Quality.BAIL;
     const breakdown = {
       trick: displayName,
-      grab: grab.name,
-      grabHold: grab.hold,
       bodyTurns,
       quality: landing.quality,
       points,

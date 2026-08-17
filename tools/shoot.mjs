@@ -51,7 +51,11 @@ const waitFor = async (fn, ms = 20000) => {
 };
 
 await shot('01-start');
+// Tap the title card to reach the hub, then Drop In — which is the only thing
+// that starts the skater skating. Nothing simulates until it is pressed.
 await page.click('.js-start');
+await page.waitForTimeout(600);
+await page.click('[data-action="play"]');
 await page.waitForTimeout(1800);
 await shot('02-rolling');
 
@@ -69,21 +73,24 @@ await waitFor((s) => Math.abs(s.roll) > 0.30, 9000);
 await page.keyboard.up('ArrowRight');
 await shot('05-flick');
 
-await waitFor((s) => Math.abs(s.roll) > 0.86, 14000);
+await waitFor((s) => Math.abs(s.roll) > 0.86, 20000);
 console.log('BEFORE CATCH', JSON.stringify(await state()));
 await shot('06-mid-flip');
 
 // Plant both fingers to stop it flat.
 await page.keyboard.down('KeyQ');
 await page.keyboard.down('Slash');
-await waitFor((s) => s.omega < 1.0, 8000);
+// Let go as soon as the spin is off it. Holding two fingers flat on the deck
+// through several real seconds of slow motion keeps levering it, which is a
+// thing the physics is right to do and a thing no player would do.
+await waitFor((s) => s.omega < 2.5, 12000);
 await shot('07-catch');
 await page.keyboard.up('KeyQ');
 await page.keyboard.up('Slash');
 console.log('CAUGHT', JSON.stringify(await state()));
 
-await page.keyboard.press('Space');
-await waitFor((s) => s.state !== 'AIR', 10000);
+// No commit button any more: the landing takes itself when the wheels touch.
+await waitFor((s) => s.state !== 'AIR', 20000);
 await page.waitForTimeout(300);
 console.log('RESULT', JSON.stringify(await state()));
 await shot('08-landed');

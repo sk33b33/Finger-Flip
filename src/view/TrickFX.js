@@ -17,6 +17,7 @@ import {
 } from 'three';
 import Config from '../core/Config.js';
 import { groundHeight, groundNormal } from '../sim/Park.js';
+import { predictTouchdown } from '../sim/Landing.js';
 import { radialSprite } from './textures.js';
 
 /**
@@ -418,25 +419,11 @@ export default class TrickFX extends Group {
 const UP = new Vector3(0, 1, 0);
 
 /**
- * Where the rider will touch down, solved analytically from the ballistic arc.
- * Used both by the reticle and by the camera, so the two never disagree.
+ * Where the rider will touch down. A thin wrapper now: the marcher itself lives
+ * in sim/Landing.js, because slow motion needs the TIME from the same solve and
+ * two copies of it would drift apart. Used by the reticle and the camera, so
+ * they never disagree with each other or with the pacing.
  */
 export function predictLanding(position, velocity, out = new Vector3()) {
-  const g = Config.sim.gravity;
-  let t = 0;
-  // March forward, refining against the height field. Ten iterations is plenty
-  // for a ramp and costs nothing.
-  for (let i = 0; i < 40; i++) {
-    t += 0.05;
-    const x = position.x + velocity.x * t;
-    const z = position.z + velocity.z * t;
-    const y = position.y + velocity.y * t + 0.5 * g * t * t;
-    if (y <= groundHeight(x, z)) {
-      out.set(x, groundHeight(x, z), z);
-      return out;
-    }
-    if (t > 4) break;
-  }
-  out.set(position.x + velocity.x * 0.8, groundHeight(position.x, position.z), position.z + velocity.z * 0.8);
-  return out;
+  return predictTouchdown(position, velocity, out).point;
 }

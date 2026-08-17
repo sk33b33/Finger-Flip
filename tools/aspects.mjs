@@ -29,6 +29,8 @@ for (const size of SIZES) {
   await page.goto('http://localhost:5192/', { waitUntil: 'load' });
   await page.waitForTimeout(2600);
   await page.click('.js-start').catch(() => {});
+  await page.waitForTimeout(400);
+  await page.click('[data-action="play"]').catch(() => {});
   await page.waitForTimeout(700);
   await page.evaluate(() => window.FF.game.pop(1.0));
 

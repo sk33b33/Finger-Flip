@@ -60,6 +60,9 @@ export default class CameraRig {
     // Board position last frame, so the trick camera can travel with it.
     this._lastBoardPos = new Vector3();
     this._hadBoard = false;
+
+    // Slow orbit applied to the chase shot while the world is paused.
+    this.idleOrbit = 0;
   }
 
   reset(skater) {
@@ -69,6 +72,7 @@ export default class CameraRig {
     this.setStanceYaw(skater.yaw);
     this.fitToViewport();
     this._hadBoard = false;
+    this.idleOrbit = 0;
     this.chaseTarget(skater, _pos, _look);
     this.position.copy(_pos);
     this.lookAt.copy(_look);
@@ -156,7 +160,11 @@ export default class CameraRig {
 
   chaseTarget(skater, outPos, outLook) {
     const C = Config.camera;
-    const back = _tmp.set(-Math.sin(skater.yaw), 0, -Math.cos(skater.yaw));
+    // While the world is stopped — the title card, an open menu — the shot
+    // creeps around the rider instead of settling and dying. A still frame
+    // under a menu looks like the game has hung; a moving one looks held.
+    const yaw = skater.yaw + this.idleOrbit;
+    const back = _tmp.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     // Dead centre behind the rider. The stance is opened up in RiderMesh to
     // compensate — a skater stands across the board, and from directly behind
     // one leg would otherwise hide the other.
@@ -170,7 +178,7 @@ export default class CameraRig {
     // Aim low and not too far ahead: it keeps the board in frame under the
     // rider's feet, which is the thing the player is about to be flipping.
     outLook.copy(skater.position).add(_tmp2.set(0, 0.95, 0));
-    outLook.addScaledVector(_tmp.set(Math.sin(skater.yaw), 0, Math.cos(skater.yaw)), 1.9);
+    outLook.addScaledVector(_tmp.set(Math.sin(yaw), 0, Math.cos(yaw)), 1.9);
   }
 
   /**
@@ -212,8 +220,11 @@ export default class CameraRig {
   /**
    * @param {number} realDelta wall-clock seconds
    */
-  update(realDelta, { skater, board, flightT }) {
+  update(realDelta, { skater, board, flightT, paused = false }) {
     const C = Config.camera;
+
+    // Only advances while the world is stopped, so a run never drifts off axis.
+    if (paused) this.idleOrbit += C.idleOrbitRate * Math.PI * 2 * realDelta;
 
     // Ride along with the board before smoothing. The board is still travelling
     // at speed during the trick, and lerping toward a moving target leaves it

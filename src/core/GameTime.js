@@ -11,6 +11,29 @@ import Config from './Config.js';
  * It also drives the fixed-timestep accumulator and reports an interpolation
  * alpha, so rendering stays smooth no matter the display refresh rate.
  */
+/**
+ * The world time scale during a trick, as a function of how long the board has
+ * left before it reaches the ground.
+ *
+ * Flat for most of the flight, then easing back toward normal over the last
+ * `releaseWithin` world seconds so the landing never crawls.
+ *
+ * A pure function of one number, deliberately: the property that matters — that
+ * the window feels the same off a two-metre launch and off a flat pop — is only
+ * checkable if the pacing depends on nothing but seconds-to-the-floor. Buried
+ * inside the game loop it could only ever be eyeballed.
+ *
+ * @param {number} secondsToTouchdown world seconds, from predictTouchdown()
+ */
+export function nailScale(secondsToTouchdown) {
+  const N = Config.nail;
+  if (!(secondsToTouchdown < N.releaseWithin)) return N.timeScale;
+  const t = Math.min(1, Math.max(0, 1 - secondsToTouchdown / N.releaseWithin));
+  // Smoothstep, so the hand-off has no corner in it at either end.
+  const eased = t * t * (3 - 2 * t);
+  return N.timeScale + (N.releaseTimeScale - N.timeScale) * eased;
+}
+
 export default class GameTime {
   constructor() {
     this.timeScale = 1;
