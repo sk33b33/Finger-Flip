@@ -64,12 +64,50 @@ the landing whenever you are ready.
 a direct stand-in for the two touch points, so tricks are identical on both.
 `Q` and `/` plant a finger without moving it, which is how you catch.
 
-`H` controls · `R` restart the run · `M` mute · `P` cycle render quality
+`Esc` menu · `H` controls · `R` restart the run · `M` mute · `P` cycle render quality
+
+**The menu** is the hub: pick a park, pick a rider, see today's three challenges
+and everything you have landed. It opens over the running game rather than
+replacing it, so the park is still there under the blur.
 
 The HUD is deliberately sparse: the trick readout is a translucent strip across
 the top that only appears while you are in the air, speed sits bottom-right, and
 the Nail meter bottom-left. Your score for a landed trick appears in the result
 banner.
+
+## Parks, riders, and what the game remembers
+
+Three parks, picked from the menu. They are data — `sim/Layouts.js` — and every
+one is graded by the same tests:
+
+| | |
+| --- | --- |
+| **Fun Run** | A mixed street plaza on a long shallow hill. Everything the game has, once each. |
+| **Slope** | A hill run: nine metres down over a hundred and back over the rest. Speed is free, so the features are low and come fast. |
+| **Vert** | Bowls to pump and the tallest transitions in the game. |
+
+What bounds a layout is not taste, it is arithmetic, and each of these has a
+test: the terrain must return to zero at the seam or the lap steps; a feature
+taller than `v² / 2g` is a wall rather than a ramp; a grade steeper than the
+rider's push accel is a hill they slide back down.
+
+**Vert is not vertical, and cannot be.** The rider follows a height function and
+always travels +Z, so there is no dropping in, no turning around, and no wall
+steeper than the climb budget allows. Vert here means the biggest transitions
+this model supports. A real halfpipe needs a different movement model.
+
+Four riders, from `view/Characters.js`, all built on one rig — the skeleton, the
+stance and every pose are shared, and a character is a palette, a head,
+something on the back and a build. Cosmetic only: handling that varied per
+character would be a second variable pulling on a feel already fitted to the
+viewport.
+
+`game/Profile.js` keeps stats and challenge progress in localStorage, fed
+entirely by the two things `ScoreSystem` already returns — the per-trick
+breakdown and the banked line. It never throws (Safari's private mode throws on
+write; Node has no localStorage at all) and never trusts what it reads back.
+Three daily challenges, chosen deterministically from the date, graded by pure
+functions over those same breakdowns.
 
 ## How it works
 
@@ -158,16 +196,21 @@ never becomes dead time. Set `Config.nail.idleTimeScale` equal to
 ```
 src/
   core/      Config (every tunable value), GameTime, Input, Haptics
-  sim/       Board, Skater, Fingers, Tricks, Grabs, Landing, Park — renderer-free
-  game/      Game (state machine), FingerMapper, Score
-  view/      Stage, CameraRig, BoardMesh, RiderMesh, ParkMesh, TrickFX, PostFX
-  ui/        Hud
+  sim/       Board, Skater, Fingers, Tricks, Grabs, Landing,
+             Park + Layouts (the three parks) — renderer-free
+  game/      Game (state machine), FingerMapper, Score, Profile, Events
+  view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
+             ParkMesh, TrickFX, PostFX
+  ui/        Hud (in game), Shell (the menu)
   audio/     Audio
-test/        headless sim + trick-vocabulary tests
+test/        headless sim + trick vocabulary + profile/challenges
 public/      splash{,-portrait}.{webp,jpg} — the title card, the only assets
-tools/       shoot.mjs   (drives the game in a browser and screenshots it)
+tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
+             menu.mjs    (every menu tab at four device shapes)
+             maps.mjs    (rides each park and shoots the approach to each lip)
+             roster.mjs  (every character from the chase camera)
+             aspects.mjs (measures the flick window at four device shapes)
              tune.mjs    (measures flick strength across frame rates)
-             aspects.mjs (frames the HUD at four device shapes)
              encode-splash.mjs (re-encodes the title card for the web)
 ```
 
@@ -189,10 +232,10 @@ depends on any of it. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 
-**One exception, stated plainly:** the rider is modelled on Deadpool, a
-character owned by Marvel and Disney. The mesh is built from scratch in
-`view/RiderMesh.js` rather than copied from anywhere, but the design is theirs.
-That is fine for a personal prototype and is not fine for anything published or
-sold — swap `RiderMesh.js` for an original character first. Nothing else in the
-project depends on who the rider is: the file is driven entirely through
-`setPose` / `setFade` / `setBailPose` / `update`.
+**One exception, stated plainly:** the default rider, "The Merc", is modelled on
+Deadpool, a character owned by Marvel and Disney. The mesh is built from scratch
+in `view/RiderMesh.js` rather than copied from anywhere, but the design is
+theirs. That is fine for a personal prototype and is not fine for anything
+published or sold. The other three riders are original, so the fix is to drop
+that one entry from `view/Characters.js` and change `DEFAULT_CHARACTER` —
+nothing else in the project depends on who the rider is.

@@ -40,6 +40,7 @@ export default class Hud {
       help: $('.js-help'),
       start: $('.js-start'),
       splashImg: $('.js-splash-img'),
+      menuBtn: $('.js-menu-btn'),
       hint: $('.js-hint'),
     };
 
@@ -88,6 +89,14 @@ export default class Hud {
 
   hideStart() {
     this.el.start.classList.add('is-hidden');
+  }
+
+  onMenu(fn) {
+    this.el.menuBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fn();
+    });
   }
 
   onCommit(fn) {
@@ -215,6 +224,11 @@ function qualityColor(q) {
 const BASE = import.meta.env?.BASE_URL ?? '/';
 
 const TEMPLATE = /* html */ `
+<button class="menu-btn js-menu-btn" type="button">
+  <span class="menu-btn__bars"><i></i><i></i><i></i></span>
+  <span>MENU</span>
+</button>
+
 <div class="hud__corner hud__corner--br">
   <div class="speed js-speed">0 km/h</div>
 </div>

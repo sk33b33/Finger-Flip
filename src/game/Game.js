@@ -28,6 +28,7 @@ import CameraRig from '../view/CameraRig.js';
 import TrickFX, { predictLanding } from '../view/TrickFX.js';
 
 import Hud from '../ui/Hud.js';
+import Shell from '../ui/Shell.js';
 import AudioEngine from '../audio/Audio.js';
 
 /**
@@ -93,8 +94,38 @@ export default class Game {
     this.stage.scene.add(this.parkMesh, this.boardMesh, this.riderMesh, this.trickFX);
 
     this.hud = new Hud(container);
-    this.hud.onStart(() => this.begin());
+    this.hud.onStart(() => this.enterMenu());
     this.hud.onCommit(() => this.commitLanding());
+    this.hud.onMenu(() => this.enterMenu());
+
+    this.shell = new Shell(container, this.profile);
+    this.shell
+      .on('play', () => this.leaveMenu())
+      .on('close', () => this.leaveMenu())
+      .on('tab', (tab) => this.shell.show(tab))
+      .on('map', (id) => {
+        this.setMap(id);
+        this.profile.select({ mapId: id });
+        this.refreshMenu();
+      })
+      .on('character', (id) => {
+        this.setCharacter(id);
+        this.profile.select({ characterId: id });
+        this.refreshMenu();
+      })
+      .on('quality', () => {
+        this.quality.enabled = false;
+        this.quality.setTier((this.quality.tier + 1) % QualityManager.tierCount);
+        this.refreshMenu();
+      })
+      .on('mute', () => {
+        this.audio.toggleMute();
+        this.refreshMenu();
+      })
+      .on('wipe', () => {
+        this.profile.reset();
+        this.refreshMenu();
+      });
 
     this.stage.onResize = (w, h) => {
       this.postFX.setSize(w, h, this.stage.renderer.getPixelRatio());
@@ -118,6 +149,7 @@ export default class Game {
     this.lastLipPrompt = -1;
     this.taughtFingers = false;
     this.started = false;
+    this.inMenu = false;
     this.running = false;
     this.lastTrick = { name: 'Ollie' };
     this.controls = { steer: 0, push: 1, brake: 0, charging: false };
@@ -133,13 +165,46 @@ export default class Game {
 
   // ------------------------------------------------------------ lifecycle ---
 
-  begin() {
-    if (this.started) return;
-    this.started = true;
-    // The run so far happened behind the title card. Start it properly.
-    this.resetRun();
+  // ----------------------------------------------------------------- menu ---
+
+  /**
+   * Open the hub. The game carries on rendering underneath — the rider keeps
+   * rolling, which is what the title card has always done — so this only has to
+   * stop reading input for the run.
+   */
+  enterMenu() {
+    this.hud.hideStart();
+    this.inMenu = true;
+    // The audio context can only be unlocked inside a user gesture, and tapping
+    // into the menu is the first one there is.
     this.audio.start();
-    this.hud.setHint('H for controls');
+    this.refreshMenu();
+    this.shell.open(this.menuState());
+  }
+
+  leaveMenu() {
+    this.inMenu = false;
+    this.shell.close();
+    if (!this.started) {
+      this.started = true;
+      this.resetRun();
+      this.hud.setHint('H for controls');
+    }
+  }
+
+  /** Re-render the open menu in place, after something it shows has changed. */
+  refreshMenu() {
+    if (this.shell.isOpen) this.shell.open(this.menuState());
+    else this.shell.state = this.menuState();
+  }
+
+  menuState() {
+    return {
+      mapId: this.map.id,
+      characterId: this.character.id,
+      quality: this.quality.label,
+      muted: this.audio.muted,
+    };
   }
 
   /**
@@ -223,7 +288,7 @@ export default class Game {
     this.input.update(rd);
     this.handleGlobalKeys();
 
-    if (this.started) {
+    if (this.started && !this.inMenu) {
       this.handleStateInput(rd);
       this.updateFingers(rd);
     }
@@ -242,6 +307,14 @@ export default class Game {
 
   handleGlobalKeys() {
     const i = this.input;
+    if (i.pressed('Escape')) {
+      if (this.inMenu) this.leaveMenu();
+      else this.enterMenu();
+      return;
+    }
+    // Everything below drives the run, and none of it should fire through an
+    // open menu — the shell has the screen and the keyboard.
+    if (this.inMenu) return;
     if (i.pressed('KeyH')) this.hud.toggleHelp();
     if (i.pressed('KeyR')) {
       this.resetRun();
@@ -258,10 +331,10 @@ export default class Game {
       this.quality.setTier((this.quality.tier + 1) % QualityManager.tierCount);
       this.hud.showPrompt(`QUALITY: ${this.quality.label.toUpperCase()}`, 1.2);
     }
-    // Any touch or key counts as the gesture that unlocks audio.
+    // Any touch or key past the title card opens the hub, and doubles as the
+    // gesture that unlocks audio.
     if (!this.started && (i.touchCount > 0 || i.keysPressed.size > 0)) {
-      this.hud.hideStart();
-      this.begin();
+      this.enterMenu();
     }
   }
 
