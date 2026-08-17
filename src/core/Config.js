@@ -103,7 +103,7 @@ export const Config = {
     // it — and the flip between them was a visible surge every time a finger
     // left the board. A trick window you can feel changing speed underneath you
     // is not a window, it is a moving target.
-    timeScale: 0.12,
+    timeScale: 0.14,
     // Long ramps. These are what make it read as the world easing down rather
     // than a switch being thrown, and they cost nothing but patience.
     enterDuration: 0.28, // real seconds to ramp into slow motion
@@ -125,11 +125,12 @@ export const Config = {
     releaseWithin: 0.35,
     releaseTimeScale: 0.55,
     meterMax: 1.0,
-    // Halved along with the time scale. The window used to average around 0.25
-    // once the idle speed-up is counted; flat at 0.12 it takes roughly twice as
-    // long in real seconds, and on the old drain a single trick off a decent
-    // launch emptied the meter before the wheels touched.
-    meterDrainPerSecondReal: 0.06,
+    // Tied to the time scale, and it has to move with it. A trick spends
+    // (flight / timeScale) real seconds in the window, so a quicker scale means
+    // fewer of them — and on an unchanged drain a full meter would silently
+    // start covering more tricks than it was tuned for. It was halved when the
+    // scale went from 0.25-ish to 0.12; this tracks the step back up to 0.14.
+    meterDrainPerSecondReal: 0.07,
     meterGainPerTrick: 0.42,
     meterGainPerSecondRolling: 0.085,
     meterMinToActivate: 0.18,
