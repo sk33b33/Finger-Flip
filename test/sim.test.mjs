@@ -748,3 +748,44 @@ test('with no rider to hold it, a catch still settles the board', () => {
   for (let i = 0; i < 60; i++) fingers.update(board, STANCE, REAL_DT, 0.7);
   assert.ok(Math.hypot(board.velocity.x, board.velocity.z) < 0.5, 'should bleed toward rest');
 });
+
+test('a launch off a rising ramp is not mistaken for a landing', () => {
+  // The auto-launch fires about half a metre BEFORE a lip, so for the first
+  // few centimetres the transition is still climbing faster than the arc is.
+  // A marcher that takes the first ground crossing it finds calls that an
+  // immediate touchdown: off the quarterpipe it reported a quarter of a second
+  // for a flight that ran a second and a half. The trick camera uses this to
+  // know how far through the flight it is, so it sat at full landing pullback
+  // for the whole trick with the deck tiny in frame.
+  setLayout('funrun');
+
+  // On the quarterpipe's face (z 66 to its lip just under 68), popping.
+  const z = 67.2;
+  const from = new Vector3(0, groundHeight(0, z) + 0.06, z);
+  const vel = new Vector3(0, 6.5, 10);
+  const { t, point } = predictTouchdown(from, vel);
+
+  assert.ok(t > 0.8, `expected a real flight off the transition, got ${t.toFixed(3)}s`);
+  assert.ok(point.z > z + 5, `and it should carry well past the lip, landed at z=${point.z.toFixed(1)}`);
+  assert.ok(
+    Math.abs(point.y - groundHeight(point.x, point.z)) < 1e-6,
+    'the predicted point must still be on the surface',
+  );
+});
+
+test('a board driven into a wall still reports a touchdown', () => {
+  // The other side of that rule: if the arc never gets clear of the ground, the
+  // first crossing is the honest answer rather than the far horizon.
+  setLayout('funrun');
+  const z = 66.4; // low on the transition, barely moving
+  const from = new Vector3(0, groundHeight(0, z) + 0.02, z);
+  const { t } = predictTouchdown(from, new Vector3(0, 0.2, 9));
+  assert.ok(t > 0 && t < 1.0, `expected a prompt touchdown, got ${t.toFixed(3)}s`);
+});
+
+test('a body resting on the ground has no flight left', () => {
+  setLayout('funrun');
+  assert.equal(predictTouchdown(new Vector3(0, -1, 10), new Vector3(0, -3, 0)).t, 0);
+  // But one sitting on the deck and moving UP is taking off, not landing.
+  assert.ok(predictTouchdown(new Vector3(0, 0, 10), new Vector3(0, 6, 0)).t > 0.5);
+});

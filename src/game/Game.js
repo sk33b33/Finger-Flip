@@ -898,18 +898,17 @@ function smoothstep(a, b, x) {
 }
 
 /** Solve the rider's flight time against the height field. */
+/**
+ * How long this flight will last, which is what the trick camera and the HUD
+ * use to know how far through it they are.
+ *
+ * Was a third hand-rolled copy of the ballistic march, and the crudest of them:
+ * off a quarterpipe it reported 0.25s for a flight that ran 1.5, so flightT hit
+ * 1 almost immediately and the trick camera sat at full landing pullback for
+ * the whole trick with the deck tiny in frame.
+ */
 function estimateAirTime(skater) {
-  const g = Config.sim.gravity;
-  const p = skater.position;
-  const v = skater.velocity;
-  let t = 0;
-  for (let i = 0; i < 200; i++) {
-    t += 0.02;
-    const y = p.y + v.y * t + 0.5 * g * t * t;
-    if (y <= groundHeight(p.x + v.x * t, p.z + v.z * t)) return t;
-    if (t > 4) break;
-  }
-  return 1;
+  return predictTouchdown(skater.position, skater.velocity).t;
 }
 
 function buildNote(result, landing) {

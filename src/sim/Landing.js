@@ -187,26 +187,45 @@ function clamp01(v) {
  * remaining rather than a fraction of the flight, which is what makes the trick
  * window the same length off a flat pop and off the big kicker.
  *
+ * A takeoff is not a landing. The launch off a ramp happens just BEFORE its
+ * lip, so for the first few centimetres the transition is still climbing faster
+ * than the arc is — and a marcher that takes the first crossing it finds calls
+ * that an immediate touchdown. Off a quarterpipe that turned a 1.5 second
+ * flight into 0.25. So no crossing counts until the arc has genuinely cleared
+ * the ground it left.
+ *
  * @returns {{t: number, point: Vector3}} world seconds until touchdown, and
- *          where. `t` is 0 if the body is already at or below the surface, and
- *          capped at MAX_LOOK if it somehow never lands.
+ *          where. `t` is 0 only for a body already on the ground and not rising,
+ *          and is capped at MAX_LOOK if it somehow never lands.
  */
 const TOUCHDOWN_STEP = 0.05;
 const TOUCHDOWN_MAX_LOOK = 4;
+/** How far above the surface the arc must get before it can land again. */
+const TOUCHDOWN_CLEARANCE = 0.08;
 
 export function predictTouchdown(position, velocity, out = new Vector3()) {
   const g = Config.sim.gravity;
 
-  if (position.y <= groundHeight(position.x, position.z)) {
+  if (position.y <= groundHeight(position.x, position.z) && velocity.y <= 0) {
     out.copy(position);
     return { t: 0, point: out };
   }
+
+  let cleared = position.y > groundHeight(position.x, position.z) + TOUCHDOWN_CLEARANCE;
+  let firstCrossing = 0;
 
   for (let t = TOUCHDOWN_STEP; t <= TOUCHDOWN_MAX_LOOK; t += TOUCHDOWN_STEP) {
     const x = position.x + velocity.x * t;
     const z = position.z + velocity.z * t;
     const y = position.y + velocity.y * t + 0.5 * g * t * t;
     const h = groundHeight(x, z);
+    if (!cleared) {
+      // Still leaving the ramp. Remember where it would have "landed" in case
+      // it turns out never to get clear, but do not take it yet.
+      if (!firstCrossing && y <= h) firstCrossing = t;
+      if (y > h + TOUCHDOWN_CLEARANCE) cleared = true;
+      continue;
+    }
     if (y <= h) {
       // Refine within the step it crossed in, by bisection. The march is coarse
       // enough on its own to wobble the release point by a frame or two, which
@@ -227,6 +246,15 @@ export function predictTouchdown(position, velocity, out = new Vector3()) {
       );
       return { t: hi, point: out };
     }
+  }
+
+  // Never got clear of the ground at all — driven into a wall rather than
+  // launched off it. The first crossing is the honest answer there.
+  if (!cleared && firstCrossing) {
+    const x = position.x + velocity.x * firstCrossing;
+    const z = position.z + velocity.z * firstCrossing;
+    out.set(x, groundHeight(x, z), z);
+    return { t: firstCrossing, point: out };
   }
 
   // Never came down inside the horizon: fall back to a point ahead so callers

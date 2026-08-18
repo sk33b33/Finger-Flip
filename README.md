@@ -8,9 +8,9 @@ in your hands: two fingers on the board, working the deck until it comes round
 the way you want it, and a catch to stop it flat before you land.
 
 Runs in the browser. Real multi-touch on a phone or tablet, keyboard on a
-desktop, no install. Every texture, sound and piece of geometry *in the game* is
-generated at runtime; the only files it downloads are the two crops of the title
-card, and it fetches whichever one matches the shape of your screen.
+desktop, no install. Almost everything you see is generated at runtime — the
+park, the rider, the sky, every sound. The only files it downloads are the title
+card and the deck art.
 
 ```bash
 npm install
@@ -174,6 +174,13 @@ that shapes it, so the property can be tested rather than eyeballed.
   cruise can only rise `v² / 2g` before stalling, so a taller feature is not a
   ramp, it is a wall you grind to a halt against. There is a test for it, and it
   is the constraint that bit when the rolling speed was halved.
+- **The board is measured off its own artwork.** The deck art is a photograph
+  on a rectangular canvas, so it only lies flat on a parametric deck if the deck
+  is the shape in the picture and the UVs project flat onto its bounding
+  rectangle. `tools/encode-deck.mjs` therefore reports the outline and the bolt
+  positions as well as writing the images, and `view/BoardMesh.js` takes its
+  silhouette and its wheelbase from those numbers. Trucks anywhere but under the
+  painted bolt holes read as a mistake.
 - **Wood on the ramps, concrete on the flat**, blended in one draw call by a
   per-vertex weight taken from the height itself. Raised ground is built
   structure; flat ground is the lot it was built on.
@@ -205,14 +212,18 @@ src/
   ui/        Hud (in game), Shell (the menu)
   audio/     Audio
 test/        headless sim + trick vocabulary + profile/challenges
-public/      splash{,-portrait}.{webp,jpg} — the title card, the only assets
+public/      splash{,-portrait}.{webp,jpg}  the title card
+             deck-{grip,art}.{webp,jpg}      the two faces of the board
 tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
              menu.mjs    (every menu tab at four device shapes)
              maps.mjs    (rides each park and shoots the approach to each lip)
              roster.mjs  (every character from the chase camera)
              aspects.mjs (measures the flick window at four device shapes)
              tune.mjs    (measures flick strength across frame rates)
+             deck.mjs    (a turntable of the board on its own)
              encode-splash.mjs (re-encodes the title card for the web)
+             encode-deck.mjs   (re-encodes the deck art, and measures the
+                                board it draws: outline and wheelbase)
 ```
 
 The `sim/` layer never imports the renderer, which is why the whole trick
@@ -225,11 +236,11 @@ Nothing gameplay-affecting is a magic number anywhere else.
 ## Notes
 
 All code, geometry, textures and audio here are original and generated at
-runtime. The one exception is the title card in `public/` — two crops of the key
-art, landscape and portrait, as WebP with a JPEG fallback each, swapped by a
-media query at square so an upright phone gets art composed for one. Re-encode
-them from the sources with `tools/encode-splash.mjs`. Nothing the game renders
-depends on any of it. The slow-motion
+runtime. The exceptions are in `public/`: the title card — two crops of the key
+art, landscape and portrait, swapped by a media query at square so an upright
+phone gets art composed for one — and the two faces of the deck. Everything
+there is WebP with a JPEG fallback, re-encoded from the sources by
+`tools/encode-splash.mjs` and `tools/encode-deck.mjs`. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 

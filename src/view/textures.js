@@ -36,73 +36,6 @@ function makeRng(seed) {
   };
 }
 
-/**
- * Grip tape, mapped once across the deck rather than tiled, because it carries
- * the single most important readability cue in the game: the two rails are
- * different colours.
- *
- * Mid-flip the deck is a dark rectangle at an unknown angle. One orange rail and
- * one cyan rail tell the player instantly which way it is rolled and how far it
- * still has to come round — without that, catching a kickflip is guesswork.
- *
- * U runs across the width, V along the length.
- */
-export function gripTexture(w = 512, h = 1024) {
-  const c = canvas(w, h);
-  const g = c.getContext('2d');
-
-  // Charcoal, not black: real grip in daylight still shows its texture.
-  g.fillStyle = '#1a1d22';
-  g.fillRect(0, 0, w, h);
-
-  const rng = makeRng(7);
-  const img = g.getImageData(0, 0, w, h);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = rng();
-    // Sparse bright specks over the base: silicon carbide catching the light.
-    const v = n > 0.978 ? 120 + n * 110 : 26 + n * 30;
-    d[i] += v * 0.5;
-    d[i + 1] += v * 0.5;
-    d[i + 2] += v * 0.55;
-  }
-  g.putImageData(img, 0, 0);
-
-  // Rail stripes. Toe side warm, heel side cool.
-  const railW = w * 0.085;
-  const toe = g.createLinearGradient(w - railW * 2, 0, w, 0);
-  toe.addColorStop(0, 'rgba(255,93,58,0)');
-  toe.addColorStop(1, 'rgba(255,110,64,0.95)');
-  g.fillStyle = toe;
-  g.fillRect(w - railW * 2, 0, railW * 2, h);
-
-  const heel = g.createLinearGradient(railW * 2, 0, 0, 0);
-  heel.addColorStop(0, 'rgba(58,169,255,0)');
-  heel.addColorStop(1, 'rgba(80,190,255,0.95)');
-  g.fillStyle = heel;
-  g.fillRect(0, 0, railW * 2, h);
-
-  // Nose marker: chevrons pointing out toward the nose tip, so the shove-it
-  // half of a trick is as readable as the flip half. Canvas textures are
-  // flipped on Y, so canvas-top is the nose end of the deck.
-  g.strokeStyle = 'rgba(246,247,251,0.6)';
-  g.lineWidth = w * 0.035;
-  g.lineCap = 'round';
-  for (let i = 0; i < 2; i++) {
-    const y = h * (0.14 + i * 0.045);
-    g.beginPath();
-    g.moveTo(w * 0.28, y);
-    g.lineTo(w * 0.5, y - h * 0.03);
-    g.lineTo(w * 0.72, y);
-    g.stroke();
-  }
-  // The tail gets a plain bar, so the two ends never read the same.
-  g.fillStyle = 'rgba(246,247,251,0.42)';
-  g.fillRect(w * 0.3, h * 0.9, w * 0.4, w * 0.035);
-
-  return finish(c, { aniso: 16 });
-}
-
 /** Matching roughness map so the grit catches light unevenly. */
 export function gripRoughness(size = 256) {
   const c = canvas(size, size);
@@ -139,58 +72,6 @@ export function plyTexture(w = 64, h = 256) {
   }
   g.globalAlpha = 1;
   return finish(c, { repeat: [1, 6] });
-}
-
-/**
- * Deck graphic. Original abstract artwork: a hard-edged chevron burst over a
- * two-tone field, the sort of thing a small board brand would print.
- */
-export function deckGraphic(w = 512, h = 1024) {
-  const c = canvas(w, h);
-  const g = c.getContext('2d');
-
-  const grad = g.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, '#12141c');
-  grad.addColorStop(0.45, '#1d2233');
-  grad.addColorStop(1, '#0d0f16');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, w, h);
-
-  // Chevron burst radiating from the centre.
-  g.save();
-  g.translate(w / 2, h / 2);
-  const colors = ['#ff5d3a', '#ff8a3d', '#ffd23f', '#2ee6a8', '#3aa9ff'];
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * Math.PI * 2;
-    g.save();
-    g.rotate(a);
-    g.fillStyle = colors[i % colors.length];
-    g.globalAlpha = 0.5 - (i % 3) * 0.09;
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(-46, -h);
-    g.lineTo(46, -h);
-    g.closePath();
-    g.fill();
-    g.restore();
-  }
-  g.restore();
-
-  // Central band + a wordmark that is just the game's own name.
-  g.globalAlpha = 0.92;
-  g.fillStyle = '#0b0d13';
-  g.fillRect(0, h * 0.42, w, h * 0.16);
-  g.globalAlpha = 1;
-  g.fillStyle = '#f6f7fb';
-  g.font = `700 ${Math.round(w * 0.15)}px system-ui, -apple-system, sans-serif`;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.letterSpacing = '6px';
-  g.fillText('FINGER', w / 2, h * 0.47);
-  g.fillStyle = '#ff5d3a';
-  g.fillText('FLIP', w / 2, h * 0.535);
-
-  return finish(c);
 }
 
 /**

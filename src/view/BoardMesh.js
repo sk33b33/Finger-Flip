@@ -9,15 +9,12 @@ import {
   BoxGeometry,
   Vector3,
   DoubleSide,
+  TextureLoader,
+  SRGBColorSpace,
+  ClampToEdgeWrapping,
 } from 'three';
 import Config from '../core/Config.js';
-import {
-  gripTexture,
-  gripRoughness,
-  plyTexture,
-  deckGraphic,
-  truckRoughness,
-} from './textures.js';
+import { gripRoughness, plyTexture, truckRoughness } from './textures.js';
 
 /**
  * The skateboard, built from maths rather than a model file.
@@ -37,9 +34,85 @@ const DECK = {
   kick: 0.052, // vertical rise at the tips
   kickStart: 0.52, // |u| where the kick begins
   concave: 0.0092,
-  tipWidthRatio: 0.42,
-  taperStart: 0.56,
 };
+
+/**
+ * The deck's half-width from the middle out to the tip, in 48 even steps, as a
+ * fraction of its widest point.
+ *
+ * Measured off the artwork by `tools/encode-deck.mjs` rather than shaped by
+ * hand, because the art is a rectangular bitmap and only sits on the deck
+ * without stretching if the deck is the shape in the picture. The outline used
+ * to be a parametric taper ending bluntly at 42% width; the real board rounds
+ * off to a point, and the difference showed up as transparent notches at the
+ * nose and tail. Both source faces measure the same board to within 1%.
+ */
+const OUTLINE = [
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.9961, 0.9961,
+  0.9961, 0.9961, 0.9961, 0.9942, 0.9923, 0.9923, 0.9884, 0.9845, 0.9807, 0.9768,
+  0.9691, 0.9613, 0.9516, 0.9381, 0.9207, 0.8994, 0.8743, 0.8453, 0.8066, 0.7621,
+  0.7021, 0.6306, 0.5397, 0.4004, 0.0348,
+];
+
+/**
+ * Distance between the trucks, as a fraction of the deck's length.
+ *
+ * Also measured, and for the same reason: the bolt holes are painted on the
+ * grip, so trucks anywhere else read as a mistake. The bolt pairs sit at 20.5%
+ * and 26% from the nose and at 73% and 78.5%, putting the two truck centres at
+ * 23.2% and 75.8%. The mesh had them at 0.42 apart, which is why they looked
+ * bunched under the middle of the board.
+ */
+const WHEELBASE = 0.526;
+
+/** Where to fetch the deck art from, via the bundler's base. */
+const BASE = import.meta.env?.BASE_URL ?? '/';
+
+const _loader = new TextureLoader();
+const _cache = new Map();
+
+/**
+ * Whether this browser can decode WebP.
+ *
+ * A <picture> element negotiates its own format; TextureLoader takes one URL
+ * and cannot, so the choice has to be made here. The canvas answers honestly:
+ * a browser without WebP hands back a PNG data URL instead.
+ */
+let _webp = null;
+function supportsWebp() {
+  if (_webp !== null) return _webp;
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 1;
+    _webp = c.toDataURL('image/webp').startsWith('data:image/webp');
+  } catch {
+    _webp = false;
+  }
+  return _webp;
+}
+
+/**
+ * One face of the deck. Shared across every BoardMesh ever built — there is
+ * only one board in the game, but it is rebuilt whenever the park is, and
+ * re-fetching the artwork each time would be pure waste.
+ */
+function deckTexture(name) {
+  const cached = _cache.get(name);
+  if (cached) return cached;
+
+  const tex = _loader.load(`${BASE}${name}.${supportsWebp() ? 'webp' : 'jpg'}`);
+  tex.colorSpace = SRGBColorSpace;
+  // The art is cropped exactly to the board, so anything sampled outside it is
+  // a rounding error at the very edge. Clamping keeps that edge rather than
+  // wrapping the far side of the graphic around onto it.
+  tex.wrapS = ClampToEdgeWrapping;
+  tex.wrapT = ClampToEdgeWrapping;
+  // The deck is seen almost edge-on for much of a flip, which is exactly where
+  // an unfiltered texture turns to mush.
+  tex.anisotropy = 8;
+  _cache.set(name, tex);
+  return tex;
+}
 
 export default class BoardMesh extends Group {
   constructor() {
@@ -47,10 +120,10 @@ export default class BoardMesh extends Group {
     this.length = Config.board.length;
     this.width = Config.board.width;
 
-    const grip = gripTexture();
+    const grip = deckTexture('deck-grip');
     const gripRough = gripRoughness();
     const ply = plyTexture();
-    const graphic = deckGraphic();
+    const graphic = deckTexture('deck-art');
     const metalRough = truckRoughness();
 
     this.materials = {
@@ -108,12 +181,11 @@ export default class BoardMesh extends Group {
   // ---------------------------------------------------------------- deck ---
 
   /** Half-width of the outline at u in [-1, 1]. */
+  /** Half-width at |u| along the deck, interpolated from the measured OUTLINE. */
   outline(u) {
-    const a = Math.abs(u);
-    if (a <= DECK.taperStart) return 1;
-    const t = (a - DECK.taperStart) / (1 - DECK.taperStart);
-    // Elliptical taper gives the rounded popsicle nose.
-    return DECK.tipWidthRatio + (1 - DECK.tipWidthRatio) * Math.sqrt(Math.max(0, 1 - t * t));
+    const a = Math.min(1, Math.abs(u)) * (OUTLINE.length - 1);
+    const i = Math.min(OUTLINE.length - 2, Math.floor(a));
+    return OUTLINE[i] + (OUTLINE[i + 1] - OUTLINE[i]) * (a - i);
   }
 
   /** Vertical rise of the nose/tail kick at u. */
@@ -151,7 +223,19 @@ export default class BoardMesh extends Group {
           const v = (j / segsV) * 2 - 1;
           const y = k + this.concaveAt(u, v) + (s === 0 ? thickness * 0.5 : -thickness * 0.5);
           positions.push(v * w, y, u * hl);
-          uvs.push(s === 0 ? j / segsV : 1 - j / segsV, i / segsU);
+          // PLANAR across the deck, not stretched to its local width. The art
+          // is a photograph of a board on a rectangular canvas, so the only
+          // mapping that lines its painted edge up with the mesh edge is a flat
+          // projection onto the bounding rectangle. Normalising by the local
+          // width instead pinches the whole picture in at the nose and tail.
+          // Board local frame is +X toe side, +Z nose. Looking DOWN at the
+          // grip with the nose away, +X falls on the left of the view; looking
+          // UP at the graphic the same way, it falls on the right. So the top
+          // face reads the image reversed and the bottom face reads it
+          // straight — the opposite of the obvious assignment, which is how
+          // FINGER FLIP ended up printed backwards.
+          const across = (v * this.outline(u)) * 0.5 + 0.5;
+          uvs.push(s === 0 ? 1 - across : across, i / segsU);
         }
       }
       const base = surfaceStart[s];
@@ -232,7 +316,7 @@ export default class BoardMesh extends Group {
 
   buildTrucks() {
     this.wheels = [];
-    const wheelbase = this.length * 0.42;
+    const wheelbase = this.length * WHEELBASE;
     for (const dir of [1, -1]) {
       const truck = new Group();
       truck.position.set(0, -DECK.thickness * 0.5, dir * wheelbase * 0.5);
