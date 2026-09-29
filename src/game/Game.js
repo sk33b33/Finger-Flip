@@ -29,6 +29,7 @@ import TrickFX, { predictLanding } from '../view/TrickFX.js';
 import Hud from '../ui/Hud.js';
 import Shell from '../ui/Shell.js';
 import AudioEngine from '../audio/Audio.js';
+import SpotifyMusic from '../audio/Spotify.js';
 
 /**
  * Game — the state machine and the wiring, and nothing else. Every rule lives
@@ -71,6 +72,10 @@ export default class Game {
     this.stage = new Stage(container);
     this.input = new Input(this.stage.renderer.domElement);
     this.audio = new AudioEngine();
+    // Optional, and inert without a client id. resume() below picks up an
+    // existing session, or the redirect coming back from a sign-in.
+    this.music = new SpotifyMusic({ clientId: import.meta.env?.VITE_SPOTIFY_CLIENT_ID });
+    this.music.onChange(() => this.refreshMenu());
     this.haptics = new Haptics();
 
     // --- simulation -------------------------------------------------------
@@ -126,7 +131,13 @@ export default class Game {
       .on('wipe', () => {
         this.profile.reset();
         this.refreshMenu();
-      });
+      })
+      .on('spotify-in', () => this.music.beginLogin())
+      .on('spotify-out', () => this.music.disconnect())
+      .on('spotify-toggle', () => this.music.toggle())
+      .on('spotify-next', () => this.music.skip(1))
+      .on('spotify-prev', () => this.music.skip(-1))
+      .on('spotify-play', (uri) => this.music.playPlaylist(uri));
 
     this.stage.onResize = (w, h) => {
       this.postFX.setSize(w, h, this.stage.renderer.getPixelRatio());
@@ -162,6 +173,10 @@ export default class Game {
 
     this.resetRun();
     this._frame = this._frame.bind(this);
+
+    // Fire and forget: a sign-in redirect has to be cleaned off the URL early,
+    // and nothing else waits on music.
+    this.music.resume();
   }
 
   // ------------------------------------------------------------ lifecycle ---
@@ -219,6 +234,7 @@ export default class Game {
       characterId: this.character.id,
       quality: this.quality.label,
       muted: this.audio.muted,
+      music: this.music.snapshot(),
     };
   }
 
@@ -848,6 +864,10 @@ export default class Game {
     // --- Audio -------------------------------------------------------------
     this.audio.updateRoll(this.skater.speed, this.state === State.ROLL, slowmo);
     this.audio.setSlowmo(slowmo);
+    // The music cannot go through the filter bus — it is a different graph, and
+    // in remote mode a different machine — so it ducks instead. Same intent as
+    // the filter closing: the trick window should sound like somewhere else.
+    this.music.setDuck(slowmo * Config.music.duckInSlowmo);
 
     // --- HUD ---------------------------------------------------------------
     let liveTrick = this.lastTrick;

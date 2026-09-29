@@ -107,6 +107,33 @@ write; Node has no localStorage at all) and never trusts what it reads back.
 Three daily challenges, chosen deterministically from the date, graded by pure
 functions over those same breakdowns.
 
+## Music
+
+Optional. `Music` in the menu signs you in to Spotify and plays your own
+playlists over the run, ducking while the world is in slow motion so the trick
+window still sounds like somewhere else.
+
+**Two of the limits are Spotify's, and there is no way around either.**
+Playback of any kind requires **Premium** — a free account signs in and reads
+its playlists fine, and every call that would make a sound returns 403. And the
+Web Playback SDK does not run on mobile browsers at all. So the game does
+whichever of these the device allows:
+
+| | |
+| --- | --- |
+| **In the browser** | The Web Playback SDK makes the page a Spotify Connect device. Desktop only. |
+| **As a remote** | The Web API drives a device you already have running — the app on your phone. Works everywhere, including iOS. |
+
+Auth is **Authorization Code with PKCE**. The game is a static bundle with
+nowhere to keep a client secret, which is precisely the case PKCE exists for;
+the deprecated implicit grant would also avoid a secret but returns no refresh
+token, so sessions would die after an hour.
+
+Setup is `.env.example`, and the one thing that catches people is the redirect
+URI: Spotify requires HTTPS, with the loopback **IP literal** as the only
+exception. `http://127.0.0.1:5173/` is accepted and `http://localhost:5173/` is
+not, so open the dev server by IP.
+
 ## How it works
 
 The interesting part is that **nothing in the physics knows what a kickflip
@@ -210,8 +237,8 @@ src/
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
              ParkMesh, TrickFX, PostFX
   ui/        Hud (in game), Shell (the menu)
-  audio/     Audio
-test/        headless sim + trick vocabulary + profile/challenges
+  audio/     Audio (synthesised), Spotify (optional, PKCE)
+test/        headless sim + trick vocabulary + profile/challenges + auth
 public/      splash{,-portrait}.{webp,jpg}  the title card
              deck-{grip,art}.{webp,jpg}      the two faces of the board
 tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)

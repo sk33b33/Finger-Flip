@@ -2,6 +2,7 @@ import './shell.css';
 import { listLayouts } from '../sim/Park.js';
 import { listCharacters } from '../view/Characters.js';
 import { dailyChallenges } from '../game/Events.js';
+import { Status, Mode } from '../audio/Spotify.js';
 
 /**
  * The menu: home, maps, events, profile, stats, settings.
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'events', label: 'Events' },
   { id: 'profile', label: 'Profile' },
   { id: 'stats', label: 'Stats' },
+  { id: 'music', label: 'Music' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -123,6 +125,7 @@ export default class Shell {
       pane('events', this.eventsHtml(today)),
       pane('profile', this.profileHtml()),
       pane('stats', this.statsHtml()),
+      pane('music', this.musicHtml()),
       pane('settings', this.settingsHtml()),
     ].join('');
 
@@ -277,6 +280,109 @@ export default class Shell {
         }</div>
       </div>
 `;
+  }
+
+  musicHtml() {
+    const m = this.state.music;
+    if (!m || !m.configured) {
+      return `
+        <div class="tile" style="cursor:default">
+          <div class="tile__kicker">Spotify</div>
+          <div class="tile__name">Not set up</div>
+          <div class="tile__blurb">
+            This build has no Spotify client ID. Register an app at
+            developer.spotify.com, whitelist this page as a redirect URI, and
+            build with <b>VITE_SPOTIFY_CLIENT_ID</b> set. The README has the steps.
+          </div>
+        </div>`;
+    }
+
+    if (m.status === Status.NO_PREMIUM) {
+      return `
+        <div class="tile is-done" style="cursor:default">
+          <div class="tile__kicker">Signed in${m.user ? ` as ${esc(m.user.name || '')}` : ''}</div>
+          <div class="tile__name">Premium required</div>
+          <div class="tile__blurb">
+            Spotify only allows an app to play audio for Premium accounts — both
+            in the browser and on another device. Your playlists are readable,
+            but nothing here can start them. Nothing to be done from this end.
+          </div>
+          <div class="tile__foot">
+            <button class="btn" type="button" data-action="spotify-out">Sign out</button>
+          </div>
+        </div>`;
+    }
+
+    if (!m.connected && m.status !== Status.CONNECTING) {
+      return `
+        <button class="tile tile--play" type="button" data-action="spotify-in">
+          <div class="tile__kicker">Spotify</div>
+          <div class="tile__name">Connect</div>
+          <div class="tile__blurb">
+            Play your own music over the run. Sends you to Spotify to sign in
+            and comes straight back. Premium only — that is Spotify's rule for
+            any app that plays audio, not ours.
+          </div>
+          ${m.error ? `<div class="tile__foot" style="color:#ff8a72">${esc(m.error)}</div>` : ''}
+        </button>`;
+    }
+
+    if (m.status === Status.CONNECTING) {
+      return `<div class="tile" style="cursor:default">
+          <div class="tile__kicker">Spotify</div>
+          <div class="tile__name">Connecting…</div>
+        </div>`;
+    }
+
+    const where =
+      m.mode === Mode.SDK
+        ? 'Playing here in the browser.'
+        : `Driving ${esc(m.deviceName || 'your Spotify app')}.`;
+
+    const nothing = m.status === Status.NO_DEVICE;
+    return `
+      <div class="tile" style="cursor:default">
+        <div class="tile__kicker">${esc(m.user?.name || 'Spotify')} &middot; ${where}</div>
+        <div class="tile__name">${esc(m.track ? m.track.name : nothing ? 'Nothing playing' : '—')}</div>
+        <div class="tile__blurb">${
+          m.track
+            ? esc(m.track.artist)
+            : nothing
+              ? 'Open Spotify on a phone or desktop and start something, or pick a playlist below.'
+              : ''
+        }</div>
+        <div class="tile__foot" style="display:flex;gap:8px;align-items:center">
+          <button class="btn" type="button" data-action="spotify-prev">&#9664;&#9664;</button>
+          <button class="btn btn--acid" type="button" data-action="spotify-toggle">${m.playing ? 'Pause' : 'Play'}</button>
+          <button class="btn" type="button" data-action="spotify-next">&#9654;&#9654;</button>
+          <button class="btn" type="button" data-action="spotify-out" style="margin-left:auto">Sign out</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section__h">Your playlists</div>
+        <div class="grid">${
+          m.playlists.length
+            ? m.playlists
+                .map(
+                  (p) => `
+              <button class="tile" type="button" data-action="spotify-play" data-value="${esc(p.uri)}">
+                <div class="tile__name" style="font-size:15px">${esc(p.name)}</div>
+                <div class="tile__foot">${p.tracks} tracks</div>
+              </button>`,
+                )
+                .join('')
+            : '<div class="rows"><div class="rows__empty">No playlists found.</div></div>'
+        }</div>
+      </div>
+
+      <div class="section">
+        <div class="section__h">In the mix</div>
+        <div class="rows"><div class="rows__empty">
+          The music pulls back while the world is in slow motion and comes back
+          on the landing, so the trick window still sounds like somewhere else.
+        </div></div>
+      </div>`;
   }
 
   settingsHtml() {

@@ -136,6 +136,14 @@ export const Config = {
     meterMinToActivate: 0.18,
   },
 
+  music: {
+    // How far Spotify is pulled back at full slow motion. Not all the way: the
+    // track dropping out entirely reads as a dropout rather than a duck, and in
+    // remote mode the volume change is a network round trip that would have to
+    // be undone at the worst possible moment.
+    duckInSlowmo: 0.62,
+  },
+
   camera: {
     followDistance: 3.4,
     // Chest height on the rider, looking down at the deck. From dead behind,

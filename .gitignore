@@ -3,3 +3,7 @@ dist/
 shots/
 .DS_Store
 *.log
+
+# Local secrets and overrides
+.env
+.env.local
