@@ -6,10 +6,19 @@ import Config from '../core/Config.js';
  *
  * A fingertip lives on the "hand plane": the horizontal plane through the
  * board's centre, in the stance frame (yaw-locked at takeoff, so it never spins
- * with the trick). Screen motion is decomposed onto that plane by projecting
- * the stance axes into screen space and inverting the 2x2, which means dragging
- * along the board on screen really does drag along the board in the world, at
- * any camera angle, with no per-camera special cases.
+ * with the trick). A touch is turned into a point on that plane by casting the
+ * screen position back through the camera and intersecting the plane, which
+ * means dragging along the board on screen really does drag along the board in
+ * the world, at any camera angle, with no per-camera special cases.
+ *
+ * This used to project the two stance axes into screen space and invert the
+ * 2x2. That is a linearisation of a perspective projection about the board's
+ * centre, and it drifts the further out you go: measured at the trick camera's
+ * own 41 degrees, a fingertip at the rail came back up to 14mm across and 30mm
+ * along from where it really was. 14mm is a quarter of `fingers.edgeBias`, the
+ * offset at which a flick starts producing roll — enough to put a little
+ * unwanted flip on a scoop that was dead down the centreline. The intersection
+ * below is exact instead, for the same handful of operations.
  *
  * Both fingers are identical: whichever end of the deck you touch is the end
  * you have hold of. There is no left-hand-only or right-hand-only move.
@@ -19,23 +28,30 @@ import Config from '../core/Config.js';
 // skater's feet actually sit and where the pitch arm is short enough that a
 // rail flick reads as a flip rather than an end-over-end.
 const HOME_ALONG = 0.22;
-const PROBE = 0.12; // metres, the probe length used to measure screen scale
-const MIN_DET = 1e-5;
+/**
+ * How close to parallel a ray may get before the plane it is aimed at stops
+ * being a surface and starts being a line. Looking along the hand plane, every
+ * screen position maps to somewhere near infinity, so those are refused.
+ */
+const MIN_RAY_Y = 1e-4;
 
-const _v = new Vector3();
-const _c = new Vector2();
-const _ax = new Vector2();
-const _az = new Vector2();
-const _d = new Vector2();
+const _origin = new Vector3();
+const _dir = new Vector3();
+const _hit = new Vector3();
 
 export default class FingerMapper {
   constructor(input, fingerController) {
     this.input = input;
     this.fingers = fingerController;
     this.stanceQuat = new Quaternion();
+    this.invStance = new Quaternion();
+    this.camera = null;
+    this.boardPos = new Vector3();
+    this.planeY = 0;
+    this.aspect = 1;
 
-    // Screen-space basis of the hand plane, recomputed every frame.
-    this.basis = { ax: new Vector2(), az: new Vector2(), centre: new Vector2(), ok: false };
+    // Whether the camera can say anything useful about the hand plane at all.
+    this.basis = { ok: false };
 
     // Keyboard fingers keep their own positions between frames.
     this.keyFinger = [
@@ -59,43 +75,59 @@ export default class FingerMapper {
   }
 
   /**
-   * Recompute how the hand plane projects to the screen.
+   * Point the mapping at the camera and the board it is working on.
+   *
+   * The hand plane is horizontal, so its normal is world up whatever the
+   * stance is doing — the stance quaternion is yaw-only and orients the axes
+   * WITHIN the plane, not the plane itself.
+   *
    * @param {PerspectiveCamera} camera
    * @param {Vector3} boardPos
    * @param {Quaternion} stanceQuat
    */
   updateBasis(camera, boardPos, stanceQuat) {
     this.stanceQuat.copy(stanceQuat);
-    const aspect = camera.aspect || 1;
-
-    const c = project(boardPos, camera, aspect, _c);
-
-    _v.set(PROBE, 0, 0).applyQuaternion(stanceQuat).add(boardPos);
-    const px = project(_v, camera, aspect, _ax).sub(c).divideScalar(PROBE);
-
-    _v.set(0, 0, PROBE).applyQuaternion(stanceQuat).add(boardPos);
-    const pz = project(_v, camera, aspect, _az).sub(c).divideScalar(PROBE);
-
-    const det = px.x * pz.y - pz.x * px.y;
-    this.basis.centre.copy(c);
-    this.basis.ax.copy(px);
-    this.basis.az.copy(pz);
-    this.basis.det = det;
-    this.basis.ok = Math.abs(det) > MIN_DET;
-    this.aspect = aspect;
+    this.invStance.copy(stanceQuat).invert();
+    this.camera = camera;
+    this.planeY = boardPos.y;
+    this.boardPos.copy(boardPos);
+    this.aspect = camera.aspect || 1;
+    // A camera sitting exactly in the plane sees it edge-on and can say
+    // nothing about where along it a touch landed.
+    this.basis.ok = Math.abs(camera.position.y - boardPos.y) > MIN_RAY_Y;
   }
 
-  /** Screen NDC (aspect-corrected) to hand-plane metres. */
+  /**
+   * Screen NDC (aspect-corrected) to hand-plane metres.
+   *
+   * @returns {Vector2} x = across the deck, y = along it. (0, 0) when the
+   *          screen position does not meet the plane in front of the camera,
+   *          which is the board's own centre and the only safe thing to say.
+   */
   screenToPlane(sx, sy, out) {
-    const { centre, ax, az, det, ok } = this.basis;
-    if (!ok) {
+    if (!this.basis.ok || !this.camera) {
       out.set(0, 0);
       return out;
     }
-    _d.set(sx - centre.x, sy - centre.y);
-    // Inverse of [[ax.x, az.x], [ax.y, az.y]]
-    out.x = (az.y * _d.x - az.x * _d.y) / det; // across
-    out.y = (-ax.y * _d.x + ax.x * _d.y) / det; // along
+    // Back to raw NDC: the caller works in aspect-corrected space so that a
+    // screen distance means the same thing on both axes.
+    const ndcX = sx / (this.aspect || 1);
+
+    _origin.setFromMatrixPosition(this.camera.matrixWorld);
+    _dir.set(ndcX, sy, 0.5).unproject(this.camera).sub(_origin);
+
+    if (Math.abs(_dir.y) < MIN_RAY_Y) {
+      out.set(0, 0);
+      return out;
+    }
+    const t = (this.planeY - _origin.y) / _dir.y;
+    if (t <= 0) {
+      // The plane is behind the camera; there is nothing to touch.
+      out.set(0, 0);
+      return out;
+    }
+    _hit.copy(_dir).multiplyScalar(t).add(_origin).sub(this.boardPos).applyQuaternion(this.invStance);
+    out.set(_hit.x, _hit.z);
     return out;
   }
 
@@ -218,12 +250,6 @@ export default class FingerMapper {
 
 const _tmpV2 = new Vector2();
 const _prev = new Vector2();
-
-function project(world, camera, aspect, out) {
-  _p.copy(world).project(camera);
-  return out.set(_p.x * aspect, _p.y);
-}
-const _p = new Vector3();
 
 function clamp(v, a, b) {
   return v < a ? a : v > b ? b : v;
