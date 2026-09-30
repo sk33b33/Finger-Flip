@@ -1,5 +1,10 @@
 import './ui/hud.css';
 import Game from './game/Game.js';
+import { registerServiceWorker } from './core/Install.js';
+
+// Before the game, and outside the try: an installed, offline-capable copy is
+// worth having even on a browser that then turns out not to do WebGL 2.
+registerServiceWorker();
 
 const container = document.getElementById('app');
 

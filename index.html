@@ -8,8 +8,17 @@
     />
     <meta name="theme-color" content="#05070c" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Deprecated everywhere except the one browser that still only reads it. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Finger Flip" />
     <title>Finger Flip</title>
+    <!-- Installed, the game gets back the 12-15% of a phone's screen the
+         address bar was using. That is not just tidier: the trick camera is
+         fitted to the viewport (see CameraRig#fitToViewport), so a taller
+         screen is a bigger deck under the flicking finger. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- A deck from above, inline: no request, and no 404 for /favicon.ico. -->
     <link
       rel="icon"

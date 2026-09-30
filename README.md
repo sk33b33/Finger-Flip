@@ -134,6 +134,46 @@ URI: Spotify requires HTTPS, with the loopback **IP literal** as the only
 exception. `http://127.0.0.1:5173/` is accepted and `http://localhost:5173/` is
 not, so open the dev server by IP.
 
+## Installing it
+
+It installs to a home screen and runs with no network. That is not packaging
+polish, it is a gameplay change: the trick camera **fits its framing to the
+viewport** — `CameraRig#fitToViewport` sizes the shot so the deck's width fills
+a set fraction of the frame, because the flick window is measured in real screen
+pixels. A mobile browser spends 12-15% of the screen on its address bar and
+toolbar. Installed, the game gets that back, and the deck is physically bigger
+under your finger.
+
+`Settings → Install` on anything that offers it. iOS never offers, so it says
+`Share → Add to Home Screen` there instead, and nothing is shown at all on a
+browser that has not decided the game is installable — a button that might not
+work is worse than no button.
+
+The service worker lives in `src/pwa/sw.js` and is stamped out at build time by
+a small plugin in `vite.config.js`. The plugin exists for one reason: the files
+most worth precaching are the ones whose names the build invents. `index.html`
+names a bundle called something like `index-B3kQ9x1a.js`, and a hand-written
+list cannot know that, so it could only cache the game *after* somebody had
+already loaded it online — exactly one visit too late for "add to home screen,
+get on the train". The list's hash is the cache name, so any real change drops
+the old cache on activate.
+
+Three rules and nothing else: navigations are network-first (the HTML names the
+bundle, so it is the one file that must not go stale), same-origin GETs are
+cache-first (the filenames carry a content hash, so a hit is by definition the
+right answer), and anything cross-origin — Spotify's SDK and API — goes
+straight past. There is deliberately **no `skipWaiting`**: a new worker taking
+over mid-session would start answering from a cache the running page knows
+nothing about, and the moment that is most likely to happen is while somebody is
+in the air. Updates land on the next cold start.
+
+Icons are drawn by `tools/icons.mjs`, which reads the deck silhouette out of the
+measured `OUTLINE` table in `view/BoardMesh.js` — so the icon on the home screen
+is the shape of the board in the game and cannot drift away from it.
+
+`node tools/pwa.mjs` serves the real `dist/` in a real browser, then pulls the
+network out and checks the game still boots, rolls, and has its deck artwork.
+
 ## How it works
 
 The interesting part is that **nothing in the physics knows what a kickflip
@@ -238,9 +278,12 @@ src/
              ParkMesh, TrickFX, PostFX
   ui/        Hud (in game), Shell (the menu)
   audio/     Audio (synthesised), Spotify (optional, PKCE)
-test/        headless sim + trick vocabulary + profile/challenges + auth
+  pwa/       sw.js — the service worker, stamped out by vite.config.js
+test/        headless sim + trick vocabulary + profile/challenges
+             + auth + finger mapping + the manifest
 public/      splash{,-portrait}.{webp,jpg}  the title card
              deck-{grip,art}.{webp,jpg}      the two faces of the board
+             manifest.webmanifest, icons/    the installed app
 tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
              menu.mjs    (every menu tab at four device shapes)
              maps.mjs    (rides each park and shoots the approach to each lip)
@@ -251,6 +294,8 @@ tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
              encode-splash.mjs (re-encodes the title card for the web)
              encode-deck.mjs   (re-encodes the deck art, and measures the
                                 board it draws: outline and wheelbase)
+             icons.mjs   (draws the app icons from the deck's own outline)
+             pwa.mjs     (serves dist/, unplugs the network, plays it anyway)
 ```
 
 The `sim/` layer never imports the renderer, which is why the whole trick
@@ -267,7 +312,8 @@ runtime. The exceptions are in `public/`: the title card — two crops of the ke
 art, landscape and portrait, swapped by a media query at square so an upright
 phone gets art composed for one — and the two faces of the deck. Everything
 there is WebP with a JPEG fallback, re-encoded from the sources by
-`tools/encode-splash.mjs` and `tools/encode-deck.mjs`. The slow-motion
+`tools/encode-splash.mjs` and `tools/encode-deck.mjs`. The app icons are drawn
+by `tools/icons.mjs`. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 

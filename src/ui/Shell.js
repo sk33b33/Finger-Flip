@@ -5,7 +5,7 @@ import { dailyChallenges } from '../game/Events.js';
 import { Status, Mode } from '../audio/Spotify.js';
 
 /**
- * The menu: home, maps, events, profile, stats, settings.
+ * The menu: home, maps, events, profile, stats, music, settings.
  *
  * Plain DOM over the canvas, same as ui/Hud.js — one template, `$` lookups,
  * class toggles. It owns no state of its own: everything it draws comes from
@@ -385,9 +385,62 @@ export default class Shell {
       </div>`;
   }
 
+  /**
+   * Installing is a gameplay setting, not housekeeping, so it sits at the top
+   * of the list rather than in a footnote: the trick camera fits itself to the
+   * viewport, and an installed game is handed back the 12-15% of a phone's
+   * screen the address bar was holding. That is a wider deck to flick.
+   *
+   * Three different things to say, because there are three different worlds:
+   * a browser that will show a dialog, iOS (which will not, ever, and needs
+   * the player sent to the share sheet), and already done.
+   */
+  installHtml(install) {
+    if (!install || (!install.promptable && !install.manual && !install.installed)) return '';
+    if (install.installed) {
+      return `
+        <div class="setting">
+          <div>
+            <div class="setting__label">Installed</div>
+            <div class="setting__note">
+              Running full screen, so the deck is as big as this screen can make it.
+            </div>
+          </div>
+        </div>`;
+    }
+    if (install.manual) {
+      return `
+        <div class="setting">
+          <div>
+            <div class="setting__label">Add to Home Screen</div>
+            <div class="setting__note">
+              Share, then Add to Home Screen. It drops the address bar, and the
+              board is framed to whatever screen it is given &mdash; so it comes
+              back bigger under your finger.
+            </div>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="setting">
+        <div>
+          <div class="setting__label">Install</div>
+          <div class="setting__note">
+            Full screen and playable offline. The board is framed to the screen,
+            so losing the address bar makes it bigger under your finger.
+          </div>
+        </div>
+        <div class="setting__ctl">
+          <button class="btn btn--acid" type="button" data-action="install">Install</button>
+        </div>
+      </div>`;
+  }
+
   settingsHtml() {
     const st = this.state;
     return `
+      ${this.installHtml(st.install)}
+
       <div class="setting">
         <div>
           <div class="setting__label">Render quality</div>

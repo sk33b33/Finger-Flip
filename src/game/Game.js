@@ -28,6 +28,7 @@ import TrickFX, { predictLanding } from '../view/TrickFX.js';
 
 import Hud from '../ui/Hud.js';
 import Shell from '../ui/Shell.js';
+import Install from '../core/Install.js';
 import AudioEngine from '../audio/Audio.js';
 import SpotifyMusic from '../audio/Spotify.js';
 
@@ -104,6 +105,12 @@ export default class Game {
     this.hud.onStart(() => this.enterMenu());
     this.hud.onMenu(() => this.enterMenu());
 
+    // Installing changes the size of the deck under the player's finger: the
+    // trick shot is fitted to the viewport, and an installed game is handed
+    // back the browser's chrome. See core/Install.js.
+    this.install = new Install();
+    this.install.onChange(() => this.refreshMenu());
+
     this.shell = new Shell(container, this.profile);
     this.shell
       .on('play', () => this.startRun())
@@ -128,6 +135,7 @@ export default class Game {
         this.audio.toggleMute();
         this.refreshMenu();
       })
+      .on('install', () => this.install.prompt())
       .on('wipe', () => {
         this.profile.reset();
         this.refreshMenu();
@@ -235,6 +243,7 @@ export default class Game {
       quality: this.quality.label,
       muted: this.audio.muted,
       music: this.music.snapshot(),
+      install: this.install.snapshot(),
     };
   }
 
