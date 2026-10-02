@@ -4,6 +4,10 @@ shots/
 .DS_Store
 *.log
 
-# Local secrets and overrides
-.env
+# Local overrides. .env itself IS committed: the only thing in it is the
+# Spotify Client ID, which is a public identifier — it is inlined into the
+# bundle at build time and readable by anyone who opens the deployed game.
+# That is exactly why the game authenticates with PKCE instead of a secret.
+# Anything that genuinely must not be shared goes in .env.local.
 .env.local
+.env.*.local
