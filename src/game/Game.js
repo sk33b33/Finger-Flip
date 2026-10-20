@@ -36,6 +36,7 @@ import Hud from '../ui/Hud.js';
 import Shell from '../ui/Shell.js';
 import SkateGame, { Outcome } from './Skate.js';
 import Tutorial from './Tutorial.js';
+import Replay from './Replay.js';
 import { earnedSet, newlyEarned, titleOf, isUnlocked, riderStates, deckStates } from './Unlocks.js';
 import GhostHand from '../view/GhostHand.js';
 import Install from '../core/Install.js';
@@ -68,6 +69,13 @@ const _predicted = new Vector3();
 // load-bearing for whether the trick shot is smooth.
 const _riderRender = new Vector3();
 const _screen = new Vector3();
+// Replay playback targets. Written by Replay#sample and read straight into the
+// meshes, so no allocation on a frame that is already drawing.
+const _rbBoard = { position: new Vector3(), quaternion: new Quaternion() };
+const _rbRider = { position: new Vector3(), quaternion: new Quaternion() };
+const _rbPose = { crouch: 0, lean: 0, air: 0 };
+const _rbOrbit = new Vector3();
+const _rbLook = new Vector3();
 
 /**
  * What the player is actually playing.
@@ -136,6 +144,7 @@ export default class Game {
     this.hud = new Hud(container);
     this.hud.onStart(() => this.enterMenu());
     this.hud.onMenu(() => this.enterMenu());
+    this.hud.onReplay((close) => (close || this.replaying ? this.stopReplay() : this.startReplay()));
 
     // Installing changes the size of the deck under the player's finger: the
     // trick shot is fitted to the viewport, and an installed game is handed
@@ -203,6 +212,9 @@ export default class Game {
     this.mode = Mode.FREE;
     this.skate = null;
     this.tutorial = null;
+    this.replay = new Replay();
+    this.replaying = null; // { clip, t, speed }
+    this.replayOffer = 0;
     this.nailActive = false;
     this.trickBlendTarget = 0;
     this.flightT = 0;
@@ -239,7 +251,7 @@ export default class Game {
 
   /** True whenever the world should be standing still. */
   get paused() {
-    return !this.started || this.inMenu;
+    return !this.started || this.inMenu || !!this.replaying;
   }
 
   // ----------------------------------------------------------------- menu ---
@@ -340,6 +352,106 @@ export default class Game {
     );
   }
 
+  // ---------------------------------------------------------------- replay ---
+
+  /**
+   * Close the clip the pop opened and, if it is worth watching, say so.
+   *
+   * Only offered, never forced: cutting to a replay on every landing would
+   * take the run away from the player several times a minute.
+   */
+  offerReplay() {
+    const clip = this.replay.close(this.time.realElapsed);
+    this.lastClip = clip;
+    if (!clip) return;
+    this.replayOffer = 3.2;
+    this.hud.setReplayOffer(true);
+  }
+
+  /**
+   * Watch it back.
+   *
+   * The simulation is not touched — `paused` already covers it, because the
+   * run is standing still while this is on screen. Playback writes the meshes
+   * directly from the recording, so the world the camera is flying through is
+   * literally the frames that were drawn.
+   */
+  startReplay() {
+    const clip = this.lastClip;
+    if (!clip || this.replaying) return;
+    this.replaying = { clip, t: 0, speed: 0.45, orbit: 0 };
+    this.replayOffer = 0;
+    this.hud.setReplayOffer(false);
+    this.hud.setReplaying(true);
+    this.audio.setMusicDuck(1);
+    this.time.setScale(1);
+  }
+
+  stopReplay() {
+    if (!this.replaying) return;
+    this.replaying = null;
+    this.hud.setReplaying(false);
+    this.audio.setMusicDuck(this.music.snapshot().connected ? 1 : 0);
+    // Put the meshes back where the simulation actually has them, or the first
+    // frame after a replay is drawn from wherever the clip finished.
+    this.boardMesh.position.copy(this.board.position);
+    this.boardMesh.quaternion.copy(this.board.quaternion);
+    this.cameraRig.reset(this.skater);
+  }
+
+  /**
+   * One frame of playback. Returns true while it still has the screen.
+   *
+   * Slower than it was recorded — 0.45x — because the whole reason for this is
+   * that the trick was over too quickly the first time. Replay#sample
+   * interpolates between the stored frames, so playing it back at under half
+   * speed is smooth rather than a flipbook.
+   */
+  updateReplay(rd) {
+    const r = this.replaying;
+    if (!r) return false;
+
+    const running = this.replay.sample(r.clip, r.t, _rbBoard, _rbRider, _rbPose);
+    r.t += rd * r.speed;
+    // Loops, rather than stopping on a frozen frame or dumping the player out:
+    // a trick you are trying to understand usually needs more than one watch.
+    if (!running) r.t = 0;
+
+    this.boardMesh.position.copy(_rbBoard.position);
+    this.boardMesh.quaternion.copy(_rbBoard.quaternion);
+    this.riderMesh.position.copy(_rbRider.position);
+    this.riderMesh.quaternion.copy(_rbRider.quaternion);
+    this.riderMesh.setPose(_rbPose.crouch, _rbPose.lean, _rbPose.air);
+    this.riderMesh.setFade(0);
+
+    // A slow orbit. The point of a replay is the angle you did not have at the
+    // time, so it keeps moving rather than sitting on one shot.
+    //
+    // Framed on a point ABOVE the board, not on the board itself: the rider is
+    // 1.78m of the subject and aiming at the deck puts their head out of frame
+    // and fills it with shins. The elevation breathes a little over the orbit
+    // so the move does not read as a turntable.
+    r.orbit += rd * 0.14;
+    const a = r.orbit * Math.PI * 2;
+    const range = 4.3;
+    const look = _rbLook
+      .copy(_rbBoard.position)
+      .lerp(_rbRider.position, 0.45)
+      .setY(_rbBoard.position.y + 0.62);
+    _rbOrbit.set(
+      look.x + Math.sin(a) * range,
+      look.y + 0.85 + 0.35 * Math.sin(a * 2),
+      look.z + Math.cos(a) * range,
+    );
+    this.stage.camera.position.copy(_rbOrbit);
+    this.stage.camera.lookAt(look);
+    this.stage.camera.fov = 42;
+    this.stage.camera.updateProjectionMatrix();
+
+    this.ghostHand.visible = false;
+    return true;
+  }
+
   /** Re-render the open menu in place, after something it shows has changed. */
   refreshMenu() {
     if (this.shell.isOpen) this.shell.open(this.menuState());
@@ -427,6 +539,9 @@ export default class Game {
     this.meter.reset();
     this.time.reset();
     this.cameraRig.reset(this.skater);
+    this.replay.reset();
+    this.replaying = null;
+    this.replayOffer = 0;
     this.state = State.ROLL;
     // NOT the mode or the S.K.A.T.E. game. resetRun puts the rider and the
     // board back; it is also called on a restart mid-game, and clearing the
@@ -468,7 +583,19 @@ export default class Game {
       }
     }
 
-    this.updatePresentation(rd);
+    // A replay owns the camera and the meshes while it is on screen, so the
+    // normal presentation pass is skipped entirely rather than fought with.
+    // The sim is already standing still — `paused` covers it.
+    if (this.replaying) {
+      this.updateReplay(rd);
+      // Through PostFX like every other frame, so the replay is graded the
+      // same as the game. A little of the slow-motion look is left in: it is
+      // a replay, and it should not be mistaken for live.
+      this.postFX.setLook(0.18, { x: 0.5, y: 0.5 }, 0, this.time.realElapsed);
+      this.postFX.render(this.stage.scene, this.stage.camera);
+    } else {
+      this.updatePresentation(rd);
+    }
     this.input.endFrame();
   }
 
@@ -486,6 +613,16 @@ export default class Game {
     // Everything below drives the run, and none of it should fire through an
     // open menu — the shell has the screen and the keyboard.
     if (this.inMenu) return;
+    if (i.pressed('KeyV')) {
+      if (this.replaying) this.stopReplay();
+      else this.startReplay();
+    }
+    if (this.replaying) {
+      // While a replay has the screen, nothing else is listening: any other
+      // key or a tap puts the run back.
+      if (i.pressed('Space') || i.pressed('KeyR')) this.stopReplay();
+      return;
+    }
     if (i.pressed('KeyH')) this.hud.toggleHelp();
     if (i.pressed('KeyR')) {
       this.resetRun();
@@ -697,6 +834,7 @@ export default class Game {
     this.totalAirTime = Math.max(0.25, estimateAirTime(this.skater));
     this.flightT = 0;
     this.state = State.AIR;
+    this.replay.mark(this.time.realElapsed);
     this.rollTimer = 0;
 
     this.audio.pop(0.5 + charge * 0.6);
@@ -801,6 +939,8 @@ export default class Game {
       points: result.points,
       note: buildNote(result, landing),
     });
+
+    this.offerReplay();
   }
 
   /**
@@ -875,6 +1015,9 @@ export default class Game {
       points: 0,
       note: landing.reasons[0] || 'Lost it',
     });
+
+    // Slams are worth watching back too — arguably more than the clean ones.
+    this.offerReplay();
   }
 
   /**
@@ -1088,6 +1231,27 @@ export default class Game {
         ? { x: _screen.x * 0.5 + 0.5, y: _screen.y * 0.5 + 0.5 }
         : { x: 0.5, y: 0.5 };
     this.postFX.setLook(slowmo, focus, this.flash, this.time.realElapsed);
+
+    // --- Replay ------------------------------------------------------------
+    // Recorded AFTER the transforms above are final, because what the replay
+    // keeps is what was on the screen. See game/Replay.js for why it stores
+    // answers rather than inputs.
+    if (!this.replaying) {
+      this.replay.record(
+        this.time.realElapsed,
+        this.boardMesh.position,
+        this.boardMesh.quaternion,
+        this.riderMesh.position,
+        this.riderMesh.quaternion,
+        this.skater.crouch,
+        this.skater.lean,
+        this.state === State.AIR ? 1 : 0,
+      );
+      if (this.replayOffer > 0) {
+        this.replayOffer = Math.max(0, this.replayOffer - rd);
+        if (this.replayOffer === 0) this.hud.setReplayOffer(false);
+      }
+    }
 
     // --- Tutorial ----------------------------------------------------------
     // Every frame and in every state, NOT alongside the finger sampling where

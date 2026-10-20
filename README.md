@@ -159,6 +159,27 @@ set of boards costs kilobytes of code rather than megabytes of art. Only the
 underside: grip is black and gritty on every board ever made, and swapping it
 would just make the deck harder to read mid-flip.
 
+## Replay
+
+The slow-motion close-up is the best thing in this game and it lasts about a
+second. `V`, or the button that appears after a landing, watches the last few
+seconds back at 0.45x with the camera orbiting.
+
+It records **transforms, not inputs**. The obvious way to build a replay on a
+deterministic simulation is to record the inputs and run the sim again — but
+this one is not quite bit-for-bit reproducible (the bail throw reads the
+landing, the park can be swapped, the accumulator is fed by a real clock), and
+every one of those is a thing that would silently break replays whenever
+somebody touched it. Recording what was on screen cannot drift from what was on
+screen, because it is the same thing.
+
+The cost is memory, and it is nothing: six seconds at 60fps is 360 frames of
+eighteen floats, about 26KB, in one `Float32Array` allocated at startup. No
+objects are created per frame, which matters when the thing being recorded is
+the frame loop.
+
+Slams are offered too — arguably they are the ones worth watching.
+
 ## Parks, riders, and what the game remembers
 
 Three parks, picked from the menu. They are data — `sim/Layouts.js` — and every
@@ -377,7 +398,7 @@ src/
   sim/       Board, Skater, Fingers, Tricks, Landing,
              Park + Layouts (the three parks) — renderer-free
   game/      Game (state machine), FingerMapper, Score, Profile, Events,
-             Skate (the game of S.K.A.T.E.), Tutorial, Unlocks
+             Skate (the game of S.K.A.T.E.), Tutorial, Unlocks, Replay
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
              ParkMesh, TrickFX, PostFX, Decks (drawn, unlockable),
              GhostHand (the tutorial's guide)

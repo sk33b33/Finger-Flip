@@ -39,6 +39,8 @@ export default class Hud {
       splashImg: $('.js-splash-img'),
       menuBtn: $('.js-menu-btn'),
       hint: $('.js-hint'),
+      replayOffer: $('.js-replay-offer'),
+      replaying: $('.js-replaying'),
       lesson: $('.js-lesson'),
       lessonStep: $('.js-lesson-step'),
       lessonTitle: $('.js-lesson-title'),
@@ -233,6 +235,26 @@ export default class Hud {
     this.set('lessonBody', this.el.lessonBody, lesson.body, true);
   }
 
+  /** Show or hide the "watch that back" button. */
+  setReplayOffer(on) {
+    this.el.replayOffer.classList.toggle('is-hidden', !on);
+  }
+
+  onReplay(fn) {
+    this.el.replayOffer.addEventListener('click', (e) => {
+      e.preventDefault();
+      fn();
+    });
+    this.el.replaying.addEventListener('click', () => fn(true));
+  }
+
+  /** Dress the screen while a replay is playing. */
+  setReplaying(on) {
+    this.root.classList.toggle('is-replaying', on);
+    this.el.replaying.classList.toggle('is-hidden', !on);
+    if (on) this.setReplayOffer(false);
+  }
+
   setHint(text) {
     this.el.hint.textContent = text;
   }
@@ -309,6 +331,17 @@ const TEMPLATE = /* html */ `
   <div class="lesson__step js-lesson-step"></div>
   <div class="lesson__title js-lesson-title"></div>
   <div class="lesson__body js-lesson-body"></div>
+</div>
+
+<!-- Offered after a landing, never forced: cutting to a replay every time
+     would take the run away from the player several times a minute. -->
+<button class="replay-offer js-replay-offer is-hidden" type="button">
+  <span class="replay-offer__key">V</span> Watch that back
+</button>
+
+<div class="replay-bar js-replaying is-hidden">
+  <span class="replay-bar__dot"></span> REPLAY
+  <span class="replay-bar__hint">V or Space to go back</span>
 </div>
 
 <div class="prompt js-prompt is-hidden"></div>
