@@ -9,7 +9,13 @@ import Board from '../sim/Board.js';
 import Skater from '../sim/Skater.js';
 import FingerFlipController from '../sim/Fingers.js';
 import { recognise, describeSpin, fullName, quantiseBodySpin } from '../sim/Tricks.js';
-import { evaluateLanding, previewLanding, predictTouchdown, Quality } from '../sim/Landing.js';
+import {
+  evaluateLanding,
+  previewLanding,
+  predictTouchdown,
+  bailThrow,
+  Quality,
+} from '../sim/Landing.js';
 import { groundHeight, groundNormal, isLip, setLayout, getLayout } from '../sim/Park.js';
 
 import ScoreSystem, { NailMeter } from './Score.js';
@@ -49,6 +55,7 @@ const RIDER_OFFSET = 0.068; // rider's feet above the surface
 const _v = new Vector3();
 const _n = new Vector3();
 const _travel = new Vector3();
+const _bail = { velocity: new Vector3(), angularVelocity: new Vector3() };
 const _q = new Quaternion();
 const _q2 = new Quaternion();
 const _predicted = new Vector3();
@@ -162,6 +169,7 @@ export default class Game {
     this.flightT = 0;
     this.totalAirTime = 1;
     this.bailTimer = 0;
+    this.bailRecoverAt = 1.7;
     this.rollTimer = 0;
     this.flash = 0;
     this.charging = false;
@@ -662,28 +670,27 @@ export default class Game {
     const s = this.skater;
     s.airborne = false;
     s.position.y = groundHeight(s.position.x, s.position.z);
-    // Keep some of the momentum so the rider slides out rather than stopping dead.
     s.velocity.y = 0;
-    s.velocity.multiplyScalar(0.55);
-    s.speed = 0;
 
-    // Throw the board clear.
-    this.board.velocity.set(
-      (Math.random() - 0.5) * 4,
-      1.6 + Math.random() * 1.6,
-      this.board.velocity.z * 0.5 + 1.5,
-    );
-    this.board.angularVelocity.set(
-      (Math.random() - 0.5) * 9,
-      (Math.random() - 0.5) * 9,
-      (Math.random() - 0.5) * 14,
-    );
+    // Everything about the slam is derived from the landing that caused it —
+    // where the board was going, what it was already doing, and how badly it
+    // was missed. See sim/Landing.js#bailThrow for why that matters.
+    s.travelDir(_travel);
+    const thrown = bailThrow(this.board, landing, _travel, s.position, s.speed, _bail);
+
+    s.velocity.multiplyScalar(thrown.riderKeep);
+    s.speed = 0;
+    this.bailRecoverAt = thrown.recoverSeconds;
+
+    this.board.velocity.copy(thrown.velocity);
+    this.board.angularVelocity.copy(thrown.angularVelocity);
     this.board.airborne = true;
 
     this.audio.bail();
     this.haptics.fire('bail');
-    this.cameraRig.addShake(0.75);
-    this.trickFX.burst(s.position, 1, 0xff8a5a);
+    // A scrape and a proper slam should not shake the camera the same amount.
+    this.cameraRig.addShake(0.42 + 0.5 * thrown.severity);
+    this.trickFX.burst(s.position, 0.6 + 0.5 * thrown.severity, 0xff8a5a);
 
     this.hud.showResult({
       trick: trick.name,
@@ -770,7 +777,7 @@ export default class Game {
     if (this.state === State.BAIL) {
       this.bailTimer += rd;
       this.riderMesh.setBailPose(this.bailTimer);
-      if (this.bailTimer > 1.7) this.recoverFromBail();
+      if (this.bailTimer > this.bailRecoverAt) this.recoverFromBail();
     }
 
     // --- Interpolated transforms ------------------------------------------

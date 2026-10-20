@@ -266,3 +266,108 @@ export function predictTouchdown(position, velocity, out = new Vector3()) {
   );
   return { t: TOUCHDOWN_MAX_LOOK, point: out };
 }
+
+// ------------------------------------------------------------------ bail ----
+
+const _throwDir = new Vector3();
+const _side = new Vector3();
+
+/**
+ * How the board leaves when a landing fails, and how hard the rider goes down.
+ *
+ * This used to be three `Math.random()` calls. That made the most-watched
+ * animation in the game the one that told the player least: the board shot off
+ * in an unrelated direction at an unrelated speed, so a slam never showed you
+ * what you had actually done wrong. Worse, the same mistake looked different
+ * every time, which is the opposite of what a player needs in order to learn
+ * from it.
+ *
+ * Everything here is derived instead:
+ *
+ *   direction   where the board already was. A deck that drifted out from
+ *               under the feet carries on going that way; one still under them
+ *               squirts off the side it was leaning, which is what a board on
+ *               its edge actually does when weight lands on it.
+ *   spin        whatever it was already doing. It was spinning when you missed
+ *               it, so it is still spinning now — the impact adds to it rather
+ *               than replacing it.
+ *   severity    the continuous landing score, so a board barely missed skitters
+ *               and a full upside-down slam goes properly.
+ *
+ * Renderer-free and pure, like the rest of this file: `out` is filled in, and
+ * the caller owns the vectors.
+ *
+ * @param {Board} board
+ * @param {{score:number}} landing  from evaluateLanding
+ * @param {Vector3} travelDir  horizontal direction the rider was moving
+ * @param {Vector3} riderGroundPos  where the rider's feet were
+ * @param {number} riderSpeed  m/s along travelDir
+ * @returns {{velocity:Vector3, angularVelocity:Vector3, severity:number,
+ *            riderKeep:number, recoverSeconds:number}}
+ */
+export function bailThrow(
+  board,
+  landing,
+  travelDir,
+  riderGroundPos,
+  riderSpeed,
+  out = { velocity: new Vector3(), angularVelocity: new Vector3() },
+) {
+  // 0 = scraped through by a hair, 1 = comprehensively upside down.
+  const severity = clamp01(1 - landing.score);
+
+  // --- which way it goes ---------------------------------------------------
+  _drift.copy(board.position).sub(riderGroundPos);
+  _drift.y = 0;
+  const drift = _drift.length();
+
+  if (drift > 0.08) {
+    // It was already leaving. Let it leave.
+    _throwDir.copy(_drift).divideScalar(drift);
+  } else {
+    // Still under the feet, so the lean decides. A deck tipped onto its toe
+    // edge shoots out toe-side; the board's own up vector, flattened, points
+    // the way it is falling over.
+    board.up(_up);
+    _side.set(_up.x, 0, _up.z);
+    const lean = _side.length();
+    if (lean > 1e-3) {
+      _throwDir.copy(_side).divideScalar(lean);
+    } else {
+      // Dead flat and dead centred: it only got here on spin, so it skitters
+      // straight ahead rather than nowhere.
+      _throwDir.copy(travelDir).normalize();
+    }
+  }
+
+  // --- how fast ------------------------------------------------------------
+  // Carried momentum plus a kick that grows with the severity. The rider is
+  // still moving, so a board that merely stops is a board that hits them.
+  const kick = 1.1 + 3.4 * severity;
+  out.velocity
+    .copy(_throwDir)
+    .multiplyScalar(kick)
+    .addScaledVector(travelDir, riderSpeed * 0.55);
+  // Up, because it is being stood on and squirting out — but not a launch.
+  out.velocity.y = 1.2 + 2.1 * severity;
+
+  // --- and still turning ---------------------------------------------------
+  // Whatever it was doing, plus what the impact put into it. Capped so a board
+  // that came in at bailSpin does not leave looking like a food processor.
+  out.angularVelocity.copy(board.angularVelocity).multiplyScalar(1.15);
+  const spin = out.angularVelocity.length();
+  const MAX_BAIL_SPIN = 16;
+  if (spin > MAX_BAIL_SPIN) out.angularVelocity.multiplyScalar(MAX_BAIL_SPIN / spin);
+  // A board that was NOT spinning still tumbles once it is kicked.
+  if (spin < 2.5) out.angularVelocity.addScaledVector(_throwDir, 3.2 + 4.0 * severity);
+
+  // --- and the rider -------------------------------------------------------
+  // How much speed survives the moment of contact. A board shooting out from
+  // under someone barely slows them down — they keep running. Landing on their
+  // back does. The rest of the scrub happens over the slide, not instantly.
+  out.riderKeep = 0.88 - 0.4 * severity;
+  // Getting up takes longer the harder you went down.
+  out.recoverSeconds = 1.25 + 0.95 * severity;
+  out.severity = severity;
+  return out;
+}
