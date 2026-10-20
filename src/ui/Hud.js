@@ -39,6 +39,9 @@ export default class Hud {
       splashImg: $('.js-splash-img'),
       menuBtn: $('.js-menu-btn'),
       hint: $('.js-hint'),
+      call: $('.js-call'),
+      callName: $('.js-call-name'),
+      callLetters: $('.js-call-letters'),
     };
 
     this._last = {};
@@ -100,10 +103,11 @@ export default class Hud {
     this.el.help.classList.toggle('is-hidden');
   }
 
-  set(key, el, value) {
+  set(key, el, value, html = false) {
     if (this._last[key] === value) return;
     this._last[key] = value;
-    el.textContent = value;
+    if (html) el.innerHTML = value;
+    else el.textContent = value;
   }
 
   /** Called every real frame. */
@@ -180,6 +184,34 @@ export default class Hud {
     this.bannerTimer = quality === 'BAIL' ? 2.2 : 1.8;
   }
 
+  /**
+   * The S.K.A.T.E. call sheet. `null` hides it, which is what every other
+   * mode passes, so nothing has to know this exists to not show it.
+   *
+   * @param {{name:string, letters:string, total:number}|null} call
+   */
+  setCall(call) {
+    if (!call) {
+      this.el.call.classList.add('is-hidden');
+      this.root.classList.remove('is-skate');
+      return;
+    }
+    this.el.call.classList.remove('is-hidden');
+    // Drops the trick panel clear of the call so the two never overlap.
+    this.root.classList.add('is-skate');
+    this.set('callName', this.el.callName, call.name);
+
+    // Letters taken are lit, the rest are outlines. Drawing all five always
+    // is the point: what is at stake has to be visible before the attempt,
+    // not revealed one at a time after it.
+    const letters = call.letters || '';
+    const html = SKATE_LETTERS.map(
+      (ch, i) =>
+        `<span class="call__letter${i < letters.length ? ' is-on' : ''}">${ch}</span>`,
+    ).join('');
+    this.set('callLetters', this.el.callLetters, html, true);
+  }
+
   setHint(text) {
     this.el.hint.textContent = text;
   }
@@ -207,6 +239,8 @@ function qualityColor(q) {
  */
 const BASE = import.meta.env?.BASE_URL ?? '/';
 
+const SKATE_LETTERS = ['S', 'K', 'A', 'T', 'E'];
+
 const TEMPLATE = /* html */ `
 <button class="menu-btn js-menu-btn" type="button">
   <span class="menu-btn__bars"><i></i><i></i><i></i></span>
@@ -215,6 +249,15 @@ const TEMPLATE = /* html */ `
 
 <div class="hud__corner hud__corner--br">
   <div class="speed js-speed">0 km/h</div>
+</div>
+
+<!-- Only ever shown in a game of S.K.A.T.E. The called trick has to be legible
+     while the rider is still rolling up to the pop, because deciding how to
+     produce it is most of the thinking. -->
+<div class="call js-call is-hidden">
+  <div class="call__k">LAND A</div>
+  <div class="call__name js-call-name"></div>
+  <div class="call__letters js-call-letters"></div>
 </div>
 
 <div class="hud__corner hud__corner--bl">

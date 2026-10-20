@@ -32,6 +32,11 @@ function emptyStats() {
     bestTrick: null, // { name, points, map }
     airTime: 0,
     trickCounts: {},
+    // Games of S.K.A.T.E.: how many were played, how many called tricks were
+    // landed in total, and the best single game.
+    skateGames: 0,
+    skateLanded: 0,
+    skateBest: 0,
   };
 }
 
@@ -149,6 +154,21 @@ export default class Profile {
     s.airTime += airTime;
     if (banked > s.bestScore) s.bestScore = banked;
     if (mapId && banked > (s.bestPerMap[mapId] || 0)) s.bestPerMap[mapId] = banked;
+    this.save();
+  }
+
+  /**
+   * A game of S.K.A.T.E., or one landed call within one.
+   *
+   * Both arrive here because the mode has two things worth remembering and
+   * they happen at different moments: a call is landed mid-game, and the game
+   * itself only resolves when the fifth letter is taken.
+   */
+  recordSkate({ landed = 0, games = 0, best = 0 } = {}) {
+    const s = this.data.stats;
+    s.skateLanded += landed;
+    s.skateGames += games;
+    if (best > s.skateBest) s.skateBest = best;
     this.save();
   }
 

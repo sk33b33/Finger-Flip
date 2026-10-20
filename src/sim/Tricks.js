@@ -170,3 +170,106 @@ export function describeSpin(spin) {
     pitch: deg(spin.x),
   };
 }
+
+// ----------------------------------------------------------- called shots ---
+
+const BY_NAME = new Map(TRICKS.map((t) => [t.name, t]));
+
+/** @param {string} name @returns {TrickDefinition|undefined} */
+export function trickByName(name) {
+  return BY_NAME.get(name);
+}
+
+/**
+ * Grade a performance against a trick that was NAMED IN ADVANCE.
+ *
+ * This is a different question from the one `recognise` answers, and the
+ * difference is the whole point of calling your shot. `recognise` quantises
+ * hard and generously: a board that only got 60% of the way round a flip still
+ * comes back as a kickflip, because in free skating the game's job is to give
+ * the player credit for what they clearly meant. Asked to produce a *specific*
+ * trick, "clearly meant" is not good enough — you either did it or you did not.
+ *
+ * So this adds the second test the free path does not apply: the residual
+ * `error` has to be inside the trick's own `tolerance`. That column has been
+ * sat in the table since it was written with nothing reading it; this is the
+ * job it was put there for. It is per-trick because the tolerances are not
+ * uniform — a triple kickflip gets 0.3 of a turn of slop and an ollie gets 0.2,
+ * since there is nothing to be imprecise about on an ollie.
+ *
+ * @param {string} calledName  the trick the player was asked for
+ * @param {ReturnType<recognise>} performed  what they actually did
+ * @returns {{hit:boolean, axes:boolean, clean:boolean, closeness:number,
+ *            called:TrickDefinition|null, reason:string}}
+ */
+export function matchCall(calledName, performed) {
+  const called = BY_NAME.get(calledName);
+  if (!called) return { hit: false, axes: false, clean: false, closeness: 0, called: null, reason: 'Unknown trick' };
+
+  const axes =
+    performed.roll === called.roll &&
+    performed.yaw === called.yaw &&
+    performed.pitch === called.pitch;
+  const clean = performed.error <= called.tolerance;
+
+  // 1 when dead on the ideal, 0 at the edge of tolerance and beyond. Used for
+  // the style bonus, so a called trick nailed exactly is worth more than one
+  // that scraped in.
+  const closeness = clamp01(1 - performed.error / Math.max(1e-6, called.tolerance));
+
+  return {
+    hit: axes && clean,
+    axes,
+    clean,
+    closeness,
+    called,
+    reason: axes && clean ? '' : describeMiss(called, performed),
+  };
+}
+
+/**
+ * Why it was not the trick that was asked for, in the words a skater would
+ * use. The player has to be able to act on this, so it names ONE thing — the
+ * axis that was furthest out — rather than listing everything at once.
+ */
+export function describeMiss(called, performed) {
+  const axes = [
+    { label: 'flip', want: called.roll, got: performed.roll, unit: 1 },
+    { label: 'shove-it', want: called.yaw, got: performed.yaw, unit: 0.5 },
+    { label: 'pitch', want: called.pitch, got: performed.pitch, unit: 1 },
+  ];
+
+  let worst = null;
+  for (const a of axes) {
+    const off = Math.abs(a.got - a.want);
+    if (off > 0 && (!worst || off > worst.off)) worst = { ...a, off };
+  }
+
+  if (worst) {
+    const over = worst.got > worst.want;
+    // Signed axes: more NEGATIVE roll is more kickflip, so "too much" has to
+    // be measured in magnitude, not in the raw number.
+    const moreSpin = Math.abs(worst.got) > Math.abs(worst.want);
+    if (worst.label === 'flip') {
+      if (Math.sign(worst.got) !== Math.sign(worst.want) && worst.got !== 0 && worst.want !== 0) {
+        return called.roll < 0 ? 'That flipped the heel way' : 'That flipped the toe way';
+      }
+      return moreSpin ? 'Too much flip' : 'Not enough flip';
+    }
+    if (worst.label === 'shove-it') {
+      if (Math.sign(worst.got) !== Math.sign(worst.want) && worst.got !== 0 && worst.want !== 0) {
+        return 'Scooped the wrong way';
+      }
+      return moreSpin ? 'Over-scooped' : 'Not enough scoop';
+    }
+    return over ? 'Too much pitch' : 'Needed more pitch';
+  }
+
+  // Right shape, too scruffy: every axis quantised to the called trick but the
+  // residual was outside tolerance.
+  return 'Not clean enough';
+}
+
+function clamp01(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}

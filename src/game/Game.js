@@ -34,6 +34,7 @@ import TrickFX, { predictLanding } from '../view/TrickFX.js';
 
 import Hud from '../ui/Hud.js';
 import Shell from '../ui/Shell.js';
+import SkateGame, { Outcome } from './Skate.js';
 import Install from '../core/Install.js';
 import AudioEngine from '../audio/Audio.js';
 import SpotifyMusic from '../audio/Spotify.js';
@@ -64,6 +65,19 @@ const _predicted = new Vector3();
 // load-bearing for whether the trick shot is smooth.
 const _riderRender = new Vector3();
 const _screen = new Vector3();
+
+/**
+ * What the player is actually playing.
+ *
+ * FREE is the endless run the game has always been: pop whatever you like,
+ * every trick scores. SKATE calls a trick and asks for that one. They share the
+ * entire simulation — the difference is only what happens to a landing once the
+ * sim has finished with it.
+ */
+export const Mode = Object.freeze({
+  FREE: 'FREE',
+  SKATE: 'SKATE',
+});
 
 export const State = Object.freeze({
   ROLL: 'ROLL',
@@ -120,7 +134,8 @@ export default class Game {
 
     this.shell = new Shell(container, this.profile);
     this.shell
-      .on('play', () => this.startRun())
+      .on('play', () => this.startRun(Mode.FREE))
+      .on('skate', () => this.startRun(Mode.SKATE))
       .on('close', () => this.leaveMenu())
       .on('tab', (tab) => this.shell.show(tab))
       .on('map', (id) => {
@@ -164,6 +179,8 @@ export default class Game {
 
     // --- state ------------------------------------------------------------
     this.state = State.ROLL;
+    this.mode = Mode.FREE;
+    this.skate = null;
     this.nailActive = false;
     this.trickBlendTarget = 0;
     this.flightT = 0;
@@ -230,12 +247,28 @@ export default class Game {
    * `close` resumes a run you already have and `startRun` begins a new one,
    * which is exactly what those two controls say they do.
    */
-  startRun() {
+  startRun(mode = Mode.FREE) {
     this.started = true;
     this.inMenu = false;
+    this.mode = mode;
+    // A fresh game every time. Carrying letters across runs would mean the Drop
+    // In button could end a game of S.K.A.T.E. you were not playing.
+    this.skate = mode === Mode.SKATE ? new SkateGame() : null;
     this.shell.close();
     this.resetRun();
-    this.hud.setHint('H for controls');
+    this.refreshCall();
+    this.hud.setHint(
+      mode === Mode.SKATE ? 'Land the called trick' : 'H for controls',
+    );
+  }
+
+  /** Push the current call to the HUD, or clear it outside S.K.A.T.E. */
+  refreshCall() {
+    this.hud.setCall(
+      this.skate && !this.skate.done
+        ? { name: this.skate.called.name, letters: this.skate.letters }
+        : null,
+    );
   }
 
   /** Re-render the open menu in place, after something it shows has changed. */
@@ -252,6 +285,8 @@ export default class Game {
       muted: this.audio.muted,
       music: this.music.snapshot(),
       install: this.install.snapshot(),
+      mode: this.mode,
+      skate: this.skate ? this.skate.summary() : null,
     };
   }
 
@@ -316,6 +351,9 @@ export default class Game {
     this.time.reset();
     this.cameraRig.reset(this.skater);
     this.state = State.ROLL;
+    // NOT the mode or the S.K.A.T.E. game. resetRun puts the rider and the
+    // board back; it is also called on a restart mid-game, and clearing the
+    // letters there would make R an undo button.
     this.nailActive = false;
     this.trickBlendTarget = 0;
     this.charging = false;
@@ -636,6 +674,12 @@ export default class Game {
     const result = this.score.award(trick, landing, flight, hands, { bodyTurns, name });
     this.recordProgress({ type: 'trick', breakdown: result, mapId: this.map.id });
 
+    // S.K.A.T.E. judges the same landing a second time, against a different
+    // question: not how well you flicked, but whether it was the trick that
+    // was asked for. Everything above is untouched by it — the run still
+    // scores normally underneath the game.
+    if (this.skate && !this.skate.done) this.judgeCall(trick, landing);
+
     if (landing.quality === Quality.BAIL) {
       this.bail({ ...trick, name }, landing);
       return;
@@ -661,6 +705,41 @@ export default class Game {
       points: result.points,
       note: buildNote(result, landing),
     });
+  }
+
+  /**
+   * Put an attempt through the game of S.K.A.T.E.
+   *
+   * Deliberately after the scoring and before the bail handling, so a slam
+   * still takes its letter and still looks like a slam.
+   */
+  judgeCall(trick, landing) {
+    const r = this.skate.attempt({ performed: trick, landing });
+    this.refreshCall();
+
+    if (r.outcome === Outcome.LANDED) {
+      // Nailed exactly, rather than scraped inside the tolerance, is worth
+      // saying out loud — it is the difference the mode exists to measure.
+      const bang = r.closeness > 0.75;
+      this.hud.showPrompt(bang ? 'BOLTS — NEXT' : 'MADE IT — NEXT', 1.5);
+      this.audio.reward(bang ? 5 : 3);
+      this.haptics.fire(bang ? 'perfect' : 'land');
+      this.profile.recordSkate({ landed: 1 });
+    } else if (r.done) {
+      this.hud.showPrompt(`S.K.A.T.E. — ${this.skate.landedCount} LANDED`, 2.6);
+      this.audio.denied();
+      this.profile.recordSkate({ games: 1, best: this.skate.landedCount });
+      // Back to free skating rather than freezing: the run carries on, and the
+      // menu is one tap away if they want another game.
+      this.mode = Mode.FREE;
+      this.skate = null;
+      this.refreshCall();
+      this.refreshMenu();
+    } else {
+      this.hud.showPrompt(`${r.letter} — ${r.reason}`, 2.0);
+      this.audio.denied();
+      this.haptics.fire('denied');
+    }
   }
 
   bail(trick, landing) {

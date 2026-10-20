@@ -73,6 +73,34 @@ the top that only appears while you are in the air, speed sits bottom-right, and
 the Nail meter bottom-left. Your score for a landed trick appears in the result
 banner.
 
+## Two ways to play
+
+**Drop in** is the endless run: pop whatever you like, every trick scores,
+link them into a line and bank it.
+
+**A game of S.K.A.T.E.** asks for a specific trick. This is the mode the trick
+table was always implicitly about — twenty-four named rows, and nothing in the
+game had ever asked for a particular one of them.
+
+The interesting part is that calling your shot is judged by a *different
+question*, not a stricter version of the same one. `recognise()` quantises
+generously on purpose: a board only 70% of the way round still comes back as a
+kickflip, because in free skating the game's job is to credit what you clearly
+meant. Asked for a named trick, "clearly meant" is not good enough — so
+`matchCall()` adds a second test the free path never applies, that the residual
+error is inside the trick's own `tolerance`. That column had been sat in the
+table since it was written with nothing reading it.
+
+Miss and you take a letter, and you get the same trick again — rerolling on a
+miss would mean never getting a second go at the one you could not do. There
+are three ways to miss and they all cost the same, because in the real game
+they do: bailing, riding away too scruffily to count, and landing something
+clean that simply was not what was called. The miss message names *one* thing,
+the axis furthest out, so it can be acted on: "Not enough flip", "Over-scooped",
+"That flipped the heel way".
+
+Runs are seeded, so the same seed plays the same game.
+
 ## Parks, riders, and what the game remembers
 
 Three parks, picked from the menu. They are data — `sim/Layouts.js` — and every
@@ -290,7 +318,8 @@ src/
   core/      Config (every tunable value), GameTime, Input, Haptics
   sim/       Board, Skater, Fingers, Tricks, Landing,
              Park + Layouts (the three parks) — renderer-free
-  game/      Game (state machine), FingerMapper, Score, Profile, Events
+  game/      Game (state machine), FingerMapper, Score, Profile, Events,
+             Skate (the game of S.K.A.T.E.)
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
              ParkMesh, TrickFX, PostFX
   ui/        Hud (in game), Shell (the menu)

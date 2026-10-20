@@ -150,6 +150,20 @@ export default class Shell {
           <div class="tile__foot">Best here ${num(this.profile.bestOn(map.id))}</div>
         </button>
 
+        <button class="tile tile--skate" type="button" data-action="skate">
+          <div class="tile__kicker">Game of</div>
+          <div class="tile__name">S.K.A.T.E.</div>
+          <div class="tile__blurb">
+            The game calls a trick and you have to produce that one. Miss it and
+            you take a letter.
+          </div>
+          <div class="tile__foot">${
+            this.profile.stats.skateBest
+              ? `Best run ${this.profile.stats.skateBest} landed`
+              : 'Not played yet'
+          }</div>
+        </button>
+
         <button class="tile" type="button" data-action="tab" data-value="events">
           <div class="tile__kicker">Today</div>
           <div class="tile__name">${esc(next ? next.name : 'All done')}</div>
@@ -246,6 +260,17 @@ export default class Shell {
         ${stat('Land rate', `${landRate}%`)}
         ${stat('Best combo', `${(s.bestCombo || 1).toFixed(2)}x`)}
         ${stat('Air time', `${Math.round(s.airTime)}s`)}
+      </div>
+
+      <div class="section">
+        <div class="section__h">S.K.A.T.E.</div>
+        <div class="rows">${
+          s.skateGames
+            ? `<div class="rows__row">Games played<b>${num(s.skateGames)}</b></div>
+               <div class="rows__row">Calls landed<b>${num(s.skateLanded)}</b></div>
+               <div class="rows__row">Best game<b>${num(s.skateBest)} in a row</b></div>`
+            : '<div class="rows__empty">The game calls a trick, you produce that one. Miss it and you take a letter.</div>'
+        }</div>
       </div>
 
       <div class="section">
