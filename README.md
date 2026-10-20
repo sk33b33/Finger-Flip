@@ -73,6 +73,39 @@ the top that only appears while you are in the air, speed sits bottom-right, and
 the Nail meter bottom-left. Your score for a landed trick appears in the result
 banner.
 
+## Learning it
+
+The control scheme is novel enough that nobody arrives knowing it, so the game
+opens with a guided first trick: `Learn the controls`, two tricks long, with
+the flick **drawn on the deck** as a path to trace.
+
+Two things make it work.
+
+**The board waits.** The lessons that ask for a flick set `hover`, and while
+one is waiting the simulation stops integrating the board's position but keeps
+integrating its rotation — the deck hangs where it is and spins as it is
+flicked. Slowing time down instead was the obvious thing to try and it does not
+work: at the trick scale of 0.14, thirty real seconds of someone reading the
+instructions is still four world seconds, and the board has long since hit the
+floor. A lesson you can fail by reading it carefully is not a lesson.
+
+**The paths are real.** Every ghost path in `game/Tutorial.js` was derived by
+running the move through the actual finger solver and keeping the one that
+produced the trick. `test/tutorial.test.mjs` replays them through that same
+solver and asserts they still do — so if the physics is ever retuned under
+them, the test fails rather than the ghost quietly teaching the wrong thing
+with complete confidence. That caught the shove-it: one frame further along the
+drawn line and it is a varial, which is what over-scooping does on a real board
+too.
+
+The guide is drawn in the world rather than on the glass, on the same hand
+plane `FingerMapper` maps a touch onto, so a dot at *(across, along)* is where
+a fingertip reported as *(across, along)* would be. The camera can orbit and
+the deck can turn over; the path stays true.
+
+Slam during it and you get the trick you were learning again, not the whole
+thing from the top.
+
 ## Two ways to play
 
 **Drop in** is the endless run: pop whatever you like, every trick scores,
@@ -319,9 +352,9 @@ src/
   sim/       Board, Skater, Fingers, Tricks, Landing,
              Park + Layouts (the three parks) — renderer-free
   game/      Game (state machine), FingerMapper, Score, Profile, Events,
-             Skate (the game of S.K.A.T.E.)
+             Skate (the game of S.K.A.T.E.), Tutorial, Install
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
-             ParkMesh, TrickFX, PostFX
+             ParkMesh, TrickFX, PostFX, GhostHand (the tutorial's guide)
   ui/        Hud (in game), Shell (the menu)
   audio/     Audio (synthesised SFX), Music (the synthesised bed),
              Spotify (optional, PKCE)

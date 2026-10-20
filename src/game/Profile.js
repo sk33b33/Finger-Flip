@@ -45,6 +45,9 @@ function emptyProfile() {
     version: VERSION,
     characterId: null, // null = whatever the game defaults to
     mapId: null,
+    // Whether the guided tutorial has been finished. Only used to decide
+    // whether to put it in front of a first-time player.
+    taught: false,
     stats: emptyStats(),
     events: {},
   };
@@ -170,6 +173,16 @@ export default class Profile {
     s.skateGames += games;
     if (best > s.skateBest) s.skateBest = best;
     this.save();
+  }
+
+  /** The tutorial was finished. Offered once; after that it is opt-in. */
+  markTaught() {
+    this.data.taught = true;
+    this.save();
+  }
+
+  get taught() {
+    return !!this.data.taught;
   }
 
   bestOn(mapId) {

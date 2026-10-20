@@ -638,3 +638,58 @@ body {
     top: 78px;
   }
 }
+
+
+/* ----------------------------------------------------------------- lesson */
+
+/*
+ * The tutorial's instruction. Bottom centre and narrow: the lesson is about
+ * the deck, so the text must not sit on top of it, and the trick camera frames
+ * the board around the middle of the screen.
+ */
+.lesson {
+  position: absolute;
+  left: 50%;
+  bottom: max(74px, calc(env(safe-area-inset-bottom) + 74px));
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 32px));
+  padding: 13px 18px 15px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  backdrop-filter: blur(10px);
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.lesson.is-hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
+.lesson__step {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: rgba(242, 245, 250, 0.38);
+}
+
+.lesson__title {
+  margin-top: 3px;
+  font-size: clamp(16px, 2.4vw, 21px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lesson__body {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(242, 245, 250, 0.74);
+}
+/* The copy bolds the part of the board being named, which is the half of the
+   sentence that carries the instruction. */
+.lesson__body b {
+  color: var(--ink);
+  font-weight: 700;
+}

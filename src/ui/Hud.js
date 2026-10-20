@@ -39,6 +39,10 @@ export default class Hud {
       splashImg: $('.js-splash-img'),
       menuBtn: $('.js-menu-btn'),
       hint: $('.js-hint'),
+      lesson: $('.js-lesson'),
+      lessonStep: $('.js-lesson-step'),
+      lessonTitle: $('.js-lesson-title'),
+      lessonBody: $('.js-lesson-body'),
       call: $('.js-call'),
       callName: $('.js-call-name'),
       callLetters: $('.js-call-letters'),
@@ -212,6 +216,23 @@ export default class Hud {
     this.set('callLetters', this.el.callLetters, html, true);
   }
 
+  /**
+   * The tutorial's current instruction. `null` hides it.
+   * @param {{title:string, body:string, step:number, total:number}|null} lesson
+   */
+  setLesson(lesson) {
+    if (!lesson) {
+      this.el.lesson.classList.add('is-hidden');
+      return;
+    }
+    this.el.lesson.classList.remove('is-hidden');
+    this.set('lessonStep', this.el.lessonStep, `${lesson.step} / ${lesson.total}`);
+    this.set('lessonTitle', this.el.lessonTitle, lesson.title);
+    // The lesson copy carries <b> around the bits that name a part of the
+    // board, which is the half of the sentence that actually matters.
+    this.set('lessonBody', this.el.lessonBody, lesson.body, true);
+  }
+
   setHint(text) {
     this.el.hint.textContent = text;
   }
@@ -280,6 +301,14 @@ const TEMPLATE = /* html */ `
     <div class="quality__label js-quality-label">LANDABLE</div>
   </div>
   <div class="quality__track"><div class="quality__fill js-quality-fill"></div></div>
+</div>
+
+<!-- The tutorial's instruction. Bottom centre, where it is readable without
+     covering the deck the lesson is about. -->
+<div class="lesson js-lesson is-hidden">
+  <div class="lesson__step js-lesson-step"></div>
+  <div class="lesson__title js-lesson-title"></div>
+  <div class="lesson__body js-lesson-body"></div>
 </div>
 
 <div class="prompt js-prompt is-hidden"></div>

@@ -141,8 +141,25 @@ export default class Shell {
     const character = this.currentCharacter();
     const next = today.find((c) => !this.profile.eventProgress(c.id).done);
 
+    // Put it in front of a first-time player rather than hiding it in a menu:
+    // the control scheme is novel enough that nobody arrives knowing it, and
+    // "Drop in" leads straight to flailing. Once it is done it drops to a
+    // small opt-in row at the bottom, for a second go or a different person on
+    // the same device.
+    const learn = `
+      <button class="tile ${this.profile.taught ? '' : 'tile--learn'}" type="button"
+              data-action="learn">
+        <div class="tile__kicker">${this.profile.taught ? 'Again' : 'Start here'}</div>
+        <div class="tile__name">Learn the controls</div>
+        <div class="tile__blurb">
+          One guided kickflip and one shove-it, with the flick drawn on the
+          deck. The board waits for you — there is no timer and nothing to fail.
+        </div>
+      </button>`;
+
     return `
       <div class="grid grid--wide">
+        ${this.profile.taught ? '' : learn}
         <button class="tile tile--play" type="button" data-action="play">
           <div class="tile__kicker">${esc(map.name)} &middot; ${esc(character.name)}</div>
           <div class="tile__name">Drop in</div>
@@ -177,6 +194,8 @@ export default class Shell {
           <div class="tile__blurb">Three of them, and they ride nothing like each other.</div>
           <div class="tile__foot">${listLayouts().length} available</div>
         </button>
+
+        ${this.profile.taught ? learn : ''}
 
         <button class="tile" type="button" data-action="tab" data-value="profile">
           <div class="tile__kicker">Rider</div>

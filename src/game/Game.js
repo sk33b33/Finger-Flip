@@ -35,6 +35,8 @@ import TrickFX, { predictLanding } from '../view/TrickFX.js';
 import Hud from '../ui/Hud.js';
 import Shell from '../ui/Shell.js';
 import SkateGame, { Outcome } from './Skate.js';
+import Tutorial from './Tutorial.js';
+import GhostHand from '../view/GhostHand.js';
 import Install from '../core/Install.js';
 import AudioEngine from '../audio/Audio.js';
 import SpotifyMusic from '../audio/Spotify.js';
@@ -77,6 +79,7 @@ const _screen = new Vector3();
 export const Mode = Object.freeze({
   FREE: 'FREE',
   SKATE: 'SKATE',
+  TUTORIAL: 'TUTORIAL',
 });
 
 export const State = Object.freeze({
@@ -118,9 +121,16 @@ export default class Game {
     this.riderMesh = new RiderMesh();
     this.parkMesh = new ParkMesh();
     this.trickFX = new TrickFX();
+    this.ghostHand = new GhostHand();
     this.cameraRig = new CameraRig(this.stage.camera);
 
-    this.stage.scene.add(this.parkMesh, this.boardMesh, this.riderMesh, this.trickFX);
+    this.stage.scene.add(
+      this.parkMesh,
+      this.boardMesh,
+      this.riderMesh,
+      this.trickFX,
+      this.ghostHand,
+    );
 
     this.hud = new Hud(container);
     this.hud.onStart(() => this.enterMenu());
@@ -136,6 +146,7 @@ export default class Game {
     this.shell
       .on('play', () => this.startRun(Mode.FREE))
       .on('skate', () => this.startRun(Mode.SKATE))
+      .on('learn', () => this.startRun(Mode.TUTORIAL))
       .on('close', () => this.leaveMenu())
       .on('tab', (tab) => this.shell.show(tab))
       .on('map', (id) => {
@@ -181,6 +192,7 @@ export default class Game {
     this.state = State.ROLL;
     this.mode = Mode.FREE;
     this.skate = null;
+    this.tutorial = null;
     this.nailActive = false;
     this.trickBlendTarget = 0;
     this.flightT = 0;
@@ -254,11 +266,57 @@ export default class Game {
     // A fresh game every time. Carrying letters across runs would mean the Drop
     // In button could end a game of S.K.A.T.E. you were not playing.
     this.skate = mode === Mode.SKATE ? new SkateGame() : null;
+    this.tutorial = mode === Mode.TUTORIAL ? new Tutorial() : null;
     this.shell.close();
     this.resetRun();
     this.refreshCall();
+    this.refreshLesson();
     this.hud.setHint(
-      mode === Mode.SKATE ? 'Land the called trick' : 'H for controls',
+      mode === Mode.SKATE
+        ? 'Land the called trick'
+        : mode === Mode.TUTORIAL
+          ? 'Follow the line on the deck'
+          : 'H for controls',
+    );
+  }
+
+  /**
+   * Has the player done the thing the current lesson asked for?
+   *
+   * Checked every rendered frame rather than at landing, because most of the
+   * lessons are about something happening mid-flight — and because a step that
+   * only resolves once the trick is over cannot hold the board in the air
+   * waiting for it.
+   */
+  checkLesson() {
+    const r = this.tutorial.update({
+      state: this.state,
+      charging: this.charging,
+      spin: this.board.spin,
+      caught: this.fingers.caught,
+    });
+    if (r.outcome === 'WAITING') return;
+
+    if (r.celebrate) this.hud.showPrompt(r.celebrate.toUpperCase(), 2.4);
+    this.audio.reward(r.outcome === 'FINISHED' ? 5 : 2);
+    this.haptics.fire('land');
+
+    if (r.outcome === 'FINISHED') {
+      this.tutorial = null;
+      this.mode = Mode.FREE;
+      this.ghostHand.visible = false;
+      this.profile.markTaught();
+      this.hud.setHint('H for controls');
+      this.refreshMenu();
+    }
+    this.refreshLesson();
+  }
+
+  /** Push the current lesson to the HUD, or clear it outside the tutorial. */
+  refreshLesson() {
+    const lesson = this.tutorial?.current;
+    this.hud.setLesson(
+      lesson ? { ...lesson, ...this.tutorial.progress } : null,
     );
   }
 
@@ -534,6 +592,16 @@ export default class Game {
     }
 
     if (this.state === State.AIR) {
+      // A tutorial step that is waiting for a flick HOVERS: the board stops
+      // moving but keeps turning, so it can be worked on for as long as the
+      // player needs. Slowing time down instead does not do it — at the trick
+      // scale, half a minute of reading the instructions is still four world
+      // seconds, and the deck is long since on the floor. A lesson you can
+      // fail by reading it carefully is not a lesson.
+      if (this.tutorial?.hovering) {
+        this.board.integrateRotation(dt);
+        return;
+      }
       this.skater.step(dt, this.controls);
       this.board.step(dt);
       this.flightT = MathUtils.clamp(this.skater.airTime / this.totalAirTime, 0, 1);
@@ -618,7 +686,9 @@ export default class Game {
 
     if (this.meter.canActivate) {
       this.enterNail();
-      if (!this.taughtFingers) {
+      // Not during the tutorial: the lesson panel is already saying this, at
+      // greater length and in the right place, and the two overlap on screen.
+      if (!this.taughtFingers && !this.tutorial) {
         this.taughtFingers = true;
         this.hud.showPrompt('TWO FINGERS ON THE BOARD', 2.4);
       }
@@ -679,6 +749,13 @@ export default class Game {
     // was asked for. Everything above is untouched by it — the run still
     // scores normally underneath the game.
     if (this.skate && !this.skate.done) this.judgeCall(trick, landing);
+
+    // A slam in the tutorial costs the trick being taught and nothing else.
+    if (this.tutorial && landing.quality === Quality.BAIL) {
+      this.tutorial.rewind();
+      this.refreshLesson();
+      this.hud.showPrompt('HAVE ANOTHER GO', 1.8);
+    }
 
     if (landing.quality === Quality.BAIL) {
       this.bail({ ...trick, name }, landing);
@@ -841,7 +918,12 @@ export default class Game {
 
     // --- Nail-the-Trick pacing -------------------------------------------
     if (this.state === State.AIR && this.nailActive) {
-      if (!this.meter.drain(rd)) {
+      if (this.tutorial?.hovering) {
+        // No drain and no relaxation while a lesson is waiting. The meter
+        // running out mid-explanation would throw the player back to full
+        // speed holding a board they have not been told what to do with.
+        this.time.requestScale(Config.nail.timeScale, Config.nail.enterDuration);
+      } else if (!this.meter.drain(rd)) {
         this.exitNail();
         this.hud.showPrompt('METER OUT', 0.9);
       } else {
@@ -955,6 +1037,28 @@ export default class Game {
         ? { x: _screen.x * 0.5 + 0.5, y: _screen.y * 0.5 + 0.5 }
         : { x: 0.5, y: 0.5 };
     this.postFX.setLook(slowmo, focus, this.flash, this.time.realElapsed);
+
+    // --- Tutorial ----------------------------------------------------------
+    // Every frame and in every state, NOT alongside the finger sampling where
+    // it started out: updateFingers returns early unless the board is in the
+    // air, so the two roll-in lessons were never checked and the sequence
+    // could not get off its first step.
+    //
+    // The guide is drawn from the same hand plane the mapper uses and from the
+    // INTERPOLATED board position, or it would swim against the deck it is
+    // painted on.
+    if (this.tutorial) {
+      this.ghostHand.update(
+        this.state === State.AIR ? this.tutorial.ghost : null,
+        this.boardMesh.position,
+        this.cameraRig.stanceQuat,
+        rd,
+      );
+      this.checkLesson();
+    } else {
+      this.ghostHand.visible = false;
+    }
+
 
     // --- Audio -------------------------------------------------------------
     this.audio.updateRoll(this.skater.speed, this.state === State.ROLL, slowmo);

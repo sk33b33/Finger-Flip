@@ -549,3 +549,18 @@
   font-size: clamp(20px, 3.6vw, 30px);
   letter-spacing: 0.01em;
 }
+
+
+/* Shown first, and only until it has been done once. It is the one tile a
+   new player should press, so it has to out-rank Drop In without looking
+   like a nag once it is finished. */
+.tile--learn {
+  grid-column: 1 / -1;
+  background:
+    radial-gradient(80% 160% at 0% 0%, rgba(215, 242, 58, 0.14), transparent 60%),
+    var(--card);
+  border-color: rgba(215, 242, 58, 0.34);
+}
+.tile--learn .tile__name {
+  font-size: clamp(22px, 4vw, 34px);
+}
