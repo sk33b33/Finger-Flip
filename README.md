@@ -134,6 +134,31 @@ the axis furthest out, so it can be acted on: "Not enough flip", "Over-scooped",
 
 Runs are seeded, so the same seed plays the same game.
 
+## Unlocks
+
+The profile was recording a great deal — tricks landed, points banked, best
+combo, air time, which tricks and how often — and none of it did anything. The
+stats screen was a wall of numbers with nothing on the other side of it. Three
+riders and four decks now sit behind it.
+
+**Nothing is stored.** There is no `unlocked: []` in the profile; whether
+something is unlocked is computed from the stats every time it is asked. That
+rules out the entire class of bug where the two disagree — a stat recorded but
+the unlock missed, an unlock granted against a stat later wiped, a saved list
+from an older build naming things that no longer exist. Erase your stats and
+you genuinely start again, which is what Erase says it does. The cost, worth
+knowing: a requirement can never be made harder without taking something off a
+player who had it.
+
+Locked entries are still drawn, with what they need and a bar showing how far
+along it is. Hiding them would make the stats mean nothing again — you cannot
+aim at something you cannot see.
+
+The decks are drawn on a canvas at runtime like every other texture here, so a
+set of boards costs kilobytes of code rather than megabytes of art. Only the
+underside: grip is black and gritty on every board ever made, and swapping it
+would just make the deck harder to read mid-flip.
+
 ## Parks, riders, and what the game remembers
 
 Three parks, picked from the menu. They are data — `sim/Layouts.js` — and every
@@ -352,9 +377,10 @@ src/
   sim/       Board, Skater, Fingers, Tricks, Landing,
              Park + Layouts (the three parks) — renderer-free
   game/      Game (state machine), FingerMapper, Score, Profile, Events,
-             Skate (the game of S.K.A.T.E.), Tutorial, Install
+             Skate (the game of S.K.A.T.E.), Tutorial, Unlocks
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
-             ParkMesh, TrickFX, PostFX, GhostHand (the tutorial's guide)
+             ParkMesh, TrickFX, PostFX, Decks (drawn, unlockable),
+             GhostHand (the tutorial's guide)
   ui/        Hud (in game), Shell (the menu)
   audio/     Audio (synthesised SFX), Music (the synthesised bed),
              Spotify (optional, PKCE)

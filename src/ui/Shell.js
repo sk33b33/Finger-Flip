@@ -1,6 +1,7 @@
 import './shell.css';
 import { listLayouts } from '../sim/Park.js';
 import { listCharacters } from '../view/Characters.js';
+import { listDecks } from '../view/Decks.js';
 import { dailyChallenges } from '../game/Events.js';
 import { Status, Mode } from '../audio/Spotify.js';
 
@@ -248,18 +249,63 @@ export default class Shell {
 
   profileHtml() {
     const current = this.state.characterId;
-    return `<div class="grid">${listCharacters()
-      .map(
-        (c) => `
-        <button class="tile ${c.id === current ? 'is-on' : ''}" type="button"
-                data-action="character" data-value="${c.id}">
-          <div class="tile__kicker">${c.id === current ? 'Riding' : 'Rider'}</div>
-          <div class="tile__name">${esc(c.name)}</div>
-          <div class="tile__blurb">${esc(c.blurb)}</div>
-          ${swatch(c.swatch)}
-        </button>`,
-      )
-      .join('')}</div>`;
+    const riders = new Map((this.state.riders || []).map((r) => [r.id, r]));
+    const currentDeck = this.state.deckId || 'stock';
+    const decks = new Map((this.state.decks || []).map((d) => [d.id, d]));
+
+    return `
+      <div class="section">
+        <div class="section__h">Rider</div>
+        <div class="grid">${listCharacters()
+          .map((c) => this.pickTile({
+            kind: 'character',
+            id: c.id,
+            name: c.name,
+            blurb: c.blurb,
+            on: c.id === current,
+            onWord: 'Riding',
+            offWord: 'Rider',
+            lock: riders.get(c.id),
+            extra: swatch(c.swatch),
+          }))
+          .join('')}</div>
+      </div>
+
+      <div class="section">
+        <div class="section__h">Deck</div>
+        <div class="grid">${listDecks()
+          .map((d) => this.pickTile({
+            kind: 'deck',
+            id: d.id,
+            name: d.name,
+            blurb: d.blurb,
+            on: d.id === currentDeck,
+            onWord: 'On the board',
+            offWord: 'Deck',
+            lock: decks.get(d.id),
+          }))
+          .join('')}</div>
+      </div>`;
+  }
+
+  /**
+   * One pick, locked or not.
+   *
+   * A locked entry is still drawn, with what it would take and how far along
+   * that is. Hiding them would make the stats screen mean nothing again — the
+   * whole point is that the numbers now point somewhere, and you cannot aim at
+   * something you cannot see.
+   */
+  pickTile({ kind, id, name, blurb, on, onWord, offWord, lock, extra = '' }) {
+    const locked = lock && !lock.unlocked;
+    return `
+      <button class="tile ${on ? 'is-on' : ''} ${locked ? 'is-locked' : ''}" type="button"
+              ${locked ? 'disabled' : `data-action="${kind}" data-value="${id}"`}>
+        <div class="tile__kicker">${locked ? 'Locked' : on ? onWord : offWord}</div>
+        <div class="tile__name">${esc(name)}</div>
+        <div class="tile__blurb">${esc(locked ? lock.label : blurb)}</div>
+        ${locked ? bar(lock.progress, lock.goal) : extra}
+      </button>`;
   }
 
   statsHtml() {

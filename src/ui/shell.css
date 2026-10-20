@@ -564,3 +564,19 @@
 .tile--learn .tile__name {
   font-size: clamp(22px, 4vw, 34px);
 }
+
+/* A locked entry is still drawn, with what it would take and a bar showing how
+   far along that is. Hiding them would make the stats screen mean nothing
+   again — you cannot aim at something you cannot see. */
+.tile.is-locked {
+  opacity: 0.55;
+  cursor: default;
+  border-style: dashed;
+}
+.tile.is-locked:hover {
+  background: var(--card);
+  transform: none;
+}
+.tile.is-locked .tile__kicker {
+  color: rgba(242, 245, 250, 0.42);
+}

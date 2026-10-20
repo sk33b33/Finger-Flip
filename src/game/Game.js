@@ -36,6 +36,7 @@ import Hud from '../ui/Hud.js';
 import Shell from '../ui/Shell.js';
 import SkateGame, { Outcome } from './Skate.js';
 import Tutorial from './Tutorial.js';
+import { earnedSet, newlyEarned, titleOf, isUnlocked, riderStates, deckStates } from './Unlocks.js';
 import GhostHand from '../view/GhostHand.js';
 import Install from '../core/Install.js';
 import AudioEngine from '../audio/Audio.js';
@@ -155,8 +156,17 @@ export default class Game {
         this.refreshMenu();
       })
       .on('character', (id) => {
+        // The menu already draws locked riders as locked; this is the second
+        // line, so a stale menu or a crafted click cannot pick one.
+        if (!isUnlocked('rider', id, this.profile.stats, this.profile.data)) return;
         this.setCharacter(id);
         this.profile.select({ characterId: id });
+        this.refreshMenu();
+      })
+      .on('deck', (id) => {
+        if (!isUnlocked('deck', id, this.profile.stats, this.profile.data)) return;
+        this.setDeck(id);
+        this.profile.select({ deckId: id });
         this.refreshMenu();
       })
       .on('quality', () => {
@@ -215,6 +225,7 @@ export default class Game {
     // both of these swap objects that are already in the scene graph.
     if (this.profile.data.mapId) this.setMap(this.profile.data.mapId);
     if (this.profile.data.characterId) this.setCharacter(this.profile.data.characterId);
+    if (this.profile.data.deckId) this.setDeck(this.profile.data.deckId);
 
     this.resetRun();
     this._frame = this._frame.bind(this);
@@ -345,6 +356,9 @@ export default class Game {
       install: this.install.snapshot(),
       mode: this.mode,
       skate: this.skate ? this.skate.summary() : null,
+      deckId: this.deckId || 'stock',
+      riders: riderStates(this.profile.stats, this.profile.data),
+      decks: deckStates(this.profile.stats, this.profile.data),
     };
   }
 
@@ -370,6 +384,11 @@ export default class Game {
    * geometry and materials — a roster you can click through is a roster you can
    * click through fifty times.
    */
+  setDeck(id) {
+    this.boardMesh.setDeck(id);
+    this.deckId = id;
+  }
+
   setCharacter(id) {
     if (this.riderMesh.character?.id === id) return this.riderMesh.character;
 
@@ -805,7 +824,9 @@ export default class Game {
     } else if (r.done) {
       this.hud.showPrompt(`S.K.A.T.E. — ${this.skate.landedCount} LANDED`, 2.6);
       this.audio.denied();
+      const earnedBefore = earnedSet(this.profile.stats, this.profile.data);
       this.profile.recordSkate({ games: 1, best: this.skate.landedCount });
+      this.announceUnlocks(earnedBefore);
       // Back to free skating rather than freezing: the run carries on, and the
       // menu is one tap away if they want another game.
       this.mode = Mode.FREE;
@@ -856,7 +877,30 @@ export default class Game {
     });
   }
 
+  /**
+   * Say so the moment something is earned.
+   *
+   * Unlocks are derived from the stats rather than stored, so there is no
+   * event to listen to — the only way to notice one is to look before and
+   * after whatever just changed the stats. Cheap: it is a handful of
+   * comparisons over a table of seven.
+   */
+  announceUnlocks(before) {
+    const after = earnedSet(this.profile.stats, this.profile.data);
+    const fresh = newlyEarned(before, after);
+    if (!fresh.length) return;
+    this.hud.showPrompt(`UNLOCKED — ${titleOf(fresh[0]).toUpperCase()}`, 2.6);
+    this.audio.reward(5);
+    this.haptics.fire('perfect');
+    this.refreshMenu();
+  }
+
   bankLine() {
+    // Snapshotted here rather than left to recordProgress: recordRun moves
+    // bestScore and totalScore BEFORE recordProgress runs, so by the time it
+    // takes its own snapshot an unlock earned by this line is already in it
+    // and would never be announced.
+    const earnedBefore = earnedSet(this.profile.stats, this.profile.data);
     const banked = this.score.bank();
     if (banked > 0) {
       this.audio.reward(Math.min(5, 1 + Math.floor(banked / 1500)));
@@ -864,6 +908,7 @@ export default class Game {
       this.profile.recordRun({ banked, mapId: this.map.id, airTime: this.bankedAirTime });
       this.recordProgress({ type: 'run', banked, mapId: this.map.id });
       this.bankedAirTime = 0;
+      this.announceUnlocks(earnedBefore);
     }
   }
 
@@ -875,6 +920,10 @@ export default class Game {
    * only place either of them is touched.
    */
   recordProgress(ev) {
+    // Snapshot first: every unlock is a function of the stats this is about to
+    // move, and the only way to notice one landing is to compare across it.
+    const earnedBefore = earnedSet(this.profile.stats, this.profile.data);
+
     if (ev.type === 'trick') {
       this.profile.recordTrick(ev.breakdown, ev.mapId);
       this.bankedAirTime += ev.breakdown.airTime || 0;
@@ -888,6 +937,8 @@ export default class Game {
         this.audio.reward(5);
       }
     }
+
+    this.announceUnlocks(earnedBefore);
   }
 
   recoverFromBail() {

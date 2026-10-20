@@ -45,6 +45,7 @@ function emptyProfile() {
     version: VERSION,
     characterId: null, // null = whatever the game defaults to
     mapId: null,
+    deckId: null,
     // Whether the guided tutorial has been finished. Only used to decide
     // whether to put it in front of a first-time player.
     taught: false,
@@ -115,9 +116,10 @@ export default class Profile {
 
   // ------------------------------------------------------------ choices ---
 
-  select({ characterId, mapId }) {
+  select({ characterId, mapId, deckId }) {
     if (characterId !== undefined) this.data.characterId = characterId;
     if (mapId !== undefined) this.data.mapId = mapId;
+    if (deckId !== undefined) this.data.deckId = deckId;
     this.save();
   }
 

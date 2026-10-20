@@ -15,6 +15,7 @@ import {
 } from 'three';
 import Config from '../core/Config.js';
 import { gripRoughness, plyTexture, truckRoughness } from './textures.js';
+import { deckGraphic } from './Decks.js';
 
 /**
  * The skateboard, built from maths rather than a model file.
@@ -124,6 +125,8 @@ export default class BoardMesh extends Group {
     const gripRough = gripRoughness();
     const ply = plyTexture();
     const graphic = deckTexture('deck-art');
+    // Kept so an unlocked deck can be swapped back off again.
+    this._stockGraphic = graphic;
     const metalRough = truckRoughness();
 
     this.materials = {
@@ -181,6 +184,21 @@ export default class BoardMesh extends Group {
   // ---------------------------------------------------------------- deck ---
 
   /** Half-width of the outline at u in [-1, 1]. */
+  /**
+   * Swap the graphic on the underside.
+   *
+   * Only the underside: the grip is black and gritty on every board ever made,
+   * and swapping it would just make the deck harder to read mid-flip. The
+   * stock deck keeps the imported artwork, so `deckGraphic` returns null for
+   * it and the original texture is put back.
+   */
+  setDeck(id) {
+    const graphic = deckGraphic(id);
+    this.materials.graphic.map = graphic || this._stockGraphic;
+    this.materials.graphic.needsUpdate = true;
+    this.deckId = id;
+  }
+
   /** Half-width at |u| along the deck, interpolated from the measured OUTLINE. */
   outline(u) {
     const a = Math.min(1, Math.abs(u)) * (OUTLINE.length - 1);
