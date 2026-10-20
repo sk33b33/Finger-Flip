@@ -109,9 +109,26 @@ functions over those same breakdowns.
 
 ## Music
 
-Optional. `Music` in the menu signs you in to Spotify and plays your own
-playlists over the run, ducking while the world is in slow motion so the trick
-window still sounds like somewhere else.
+There are two soundtracks and they never play together.
+
+**The bed is synthesised, and it is the default.** `audio/Music.js` has a grid,
+a four-bar progression and a set of pattern rules; the notes are scheduled a
+fraction of a second ahead of the audio clock as they are needed. Nothing is a
+loop being played back, which is what lets it react — the kit can cut out the
+instant the board leaves the ground, because the next bar has not been decided
+yet. Energy follows the rider's speed, and slow motion drops the drums to
+half-time and closes a filter over the lot. The tempo does NOT change: pitching
+the whole bed down was the obvious thing to try and it sounds broken, because
+the sound effects around it are not shifting with it.
+
+`node tools/music.mjs` renders it to a WAV and measures it, so a bed that has
+gone silent, started clipping, or stopped reacting fails loudly.
+
+**Spotify is optional, and takes over when it is connected.** `Music` in the
+menu signs you in and plays your own playlists over the run, ducking while the
+world is in slow motion so the trick window still sounds like somewhere else.
+The synthesised bed goes silent the moment Spotify connects — two soundtracks
+at once is worse than either.
 
 **Two of the limits are Spotify's, and there is no way around either.**
 Playback of any kind requires **Premium** — a free account signs in and reads
@@ -277,7 +294,8 @@ src/
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
              ParkMesh, TrickFX, PostFX
   ui/        Hud (in game), Shell (the menu)
-  audio/     Audio (synthesised), Spotify (optional, PKCE)
+  audio/     Audio (synthesised SFX), Music (the synthesised bed),
+             Spotify (optional, PKCE)
   pwa/       sw.js — the service worker, stamped out by vite.config.js
 test/        headless sim + trick vocabulary + profile/challenges
              + auth + finger mapping + the manifest
@@ -296,6 +314,7 @@ tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
                                 board it draws: outline and wheelbase)
              icons.mjs   (draws the app icons from the deck's own outline)
              pwa.mjs     (serves dist/, unplugs the network, plays it anyway)
+             music.mjs   (renders the bed to a WAV and measures it)
 ```
 
 The `sim/` layer never imports the renderer, which is why the whole trick

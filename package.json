@@ -9,7 +9,8 @@
     "preview": "vite preview --port 4173",
     "test": "node --test test/*.test.mjs",
     "pwa": "npm run build && node tools/pwa.mjs",
-    "icons": "node tools/icons.mjs"
+    "icons": "node tools/icons.mjs",
+    "music": "node tools/music.mjs"
   },
   "repository": {
     "type": "git",

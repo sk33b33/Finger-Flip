@@ -885,6 +885,18 @@ export default class Game {
     // the filter closing: the trick window should sound like somewhere else.
     this.music.setDuck(slowmo * Config.music.duckInSlowmo);
 
+    // The synthesised bed, which DOES go through the bus. Its energy is the
+    // speed the rider is carrying, dropped to nothing while they are in the
+    // air: the kit cutting out on the pop is what makes the trick window feel
+    // like it has been lifted out of the run. And if the player has Spotify
+    // connected, the bed gets out of the way entirely — two soundtracks at
+    // once is worse than either one.
+    const rolling = this.state === State.ROLL;
+    this.audio.setMusicEnergy(
+      rolling ? 0.3 + 0.7 * Math.min(1, this.skater.speed / Config.skater.maxSpeed) : 0.12,
+    );
+    this.audio.setMusicDuck(this.music.snapshot().connected ? 1 : 0);
+
     // --- HUD ---------------------------------------------------------------
     let liveTrick = this.lastTrick;
     if (this.state === State.AIR) {

@@ -1,4 +1,5 @@
 import Config from '../core/Config.js';
+import Music from './Music.js';
 
 /**
  * Original procedural audio. Every sound is synthesised from noise and
@@ -51,6 +52,13 @@ export default class AudioEngine {
 
     this.noiseBuffer = makeNoise(ctx, 2.5);
     this.startRoll();
+
+    // The bed goes through the same bus as everything else, so the slow-motion
+    // filter and the reverb swell apply to it without being wired twice.
+    this.music = new Music(ctx, this.busFilter);
+    this.music.setMuted(this.muted);
+    this.music.start();
+
     this.ready = true;
   }
 
@@ -107,6 +115,24 @@ export default class AudioEngine {
     this.busFilter.frequency.setTargetAtTime(18000 - slowmo * 16200, t, 0.06);
     this.master.gain.setTargetAtTime(0.75 - slowmo * 0.18, t, 0.06);
     this.reverbGain.gain.setTargetAtTime(0.16 + slowmo * 0.4, t, 0.1);
+    this.music?.setSlowmo(slowmo);
+  }
+
+  /**
+   * How busy the bed is: the kit and the lead come in with the energy.
+   * @param {number} energy 0..1
+   */
+  setMusicEnergy(energy) {
+    this.music?.setEnergy(energy);
+  }
+
+  /**
+   * Pull the synthesised bed out of the way of the player's own music.
+   * At 1 it is silent — two soundtracks at once is worse than either.
+   * @param {number} duck 0..1
+   */
+  setMusicDuck(duck) {
+    this.music?.setDuck(duck);
   }
 
   // ------------------------------------------------------- one-shot cues ---
@@ -271,6 +297,9 @@ export default class AudioEngine {
   toggleMute() {
     this.muted = !this.muted;
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.75;
+    // Muting the master would silence it anyway, but the bed is a scheduler
+    // as well as a sound: told it is muted, it stops queueing notes at all.
+    this.music?.setMuted(this.muted);
     return this.muted;
   }
 }
