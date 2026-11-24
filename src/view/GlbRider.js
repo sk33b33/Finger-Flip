@@ -50,7 +50,20 @@ import Config from '../core/Config.js';
  * nothing, not throw.
  */
 
-const STANCE_YAW = Math.PI * 0.22;
+/**
+ * How far the body is turned from the direction of travel.
+ *
+ * ZERO, where view/RiderMesh.js uses 0.22 turns — and that difference is the
+ * point. The procedural rider is built facing down the board and has to be
+ * yawed into a stance. This one's stance comes from a skating clip that
+ * already contains it, so yawing it again rotates a correct pose off true.
+ *
+ * Measured rather than argued about: sweeping this through a full turn and
+ * checking the line between the feet against the board's long axis gives 99%
+ * alignment at 0 and at 180, and a worst case of 12% at the quarter turns.
+ * 180 is the same stance riding fakie, so 0 it is.
+ */
+const STANCE_YAW = 0;
 const REST_BEND = 0.2;
 const CROUCH_DROP = 0.22;
 
@@ -325,37 +338,48 @@ export default class GlbRider extends Group {
     if (!this.loaded) return;
     if (this.pose.bail !== null) this.applyBail(this.pose.bail);
     else this.applyRide(this.pose.crouch, this.pose.lean, this.pose.air);
-    this.plantFeet();
+    this.placeFeet();
   }
 
   /**
-   * Put the soles on the board, by measuring where they actually ended up.
+   * Put the feet ON the board, by measuring where they actually ended up.
    *
-   * The clip is a skating stance, so it comes with its own bend in the legs,
-   * and the crouch is layered on top of that rather than replacing it. Two
-   * sources of leg angle means no amount of solving one of them in isolation
-   * lands the feet in the right place — the rest pose floated two
-   * centimetres up and a full crouch pushed them seventeen through the deck.
+   * Two things are being corrected, and both for the same reason: there are
+   * two sources of leg position — the clip's own stance and the crouch
+   * layered over it — so no solve of either in isolation lands the feet
+   * anywhere in particular. Rather than predict, look.
    *
-   * So rather than predict it, look: find the lower sole and lift the whole
-   * body until it is on the plane. Cheap, exact, and it cannot be wrong
-   * whatever the clip does next. Skipped in the air and during a slam, which
-   * are precisely the times the feet are supposed to leave.
+   *   height   find the lower sole and lift the body until it is on the deck.
+   *            Predicting it had the rest pose floating two centimetres up
+   *            and a full crouch seventeen through the board.
+   *   along    the clip stands with its weight somewhere of its own choosing,
+   *            which put both feet back by the tail with the nose empty in
+   *            front of him. Centring the midpoint of the feet on the board's
+   *            origin puts one over each truck, which is where they go.
+   *
+   * Skipped in the air and during a slam, which are precisely the times the
+   * feet are meant to leave.
    */
-  plantFeet() {
-    if (this.pose.bail !== null || this.pose.air > 0.5) {
-      this.stance.position.y = 0;
-      return;
-    }
-    this.stance.position.y = 0;
+  placeFeet() {
+    this.stance.position.set(0, 0, 0);
+    if (this.pose.bail !== null || this.pose.air > 0.5) return;
+
     this.updateMatrixWorld(true);
     let lowest = Infinity;
+    _b.set(0, 0, 0);
     for (const toe of this.toeBones) {
       toe.getWorldPosition(_a);
       this.worldToLocal(_a);
       lowest = Math.min(lowest, _a.y - this.soleDrop);
+      _b.add(_a);
     }
+    _b.divideScalar(this.toeBones.length);
+
     if (Number.isFinite(lowest)) this.stance.position.y = -lowest;
+    // Centred along the deck and across it, so he is standing on the board
+    // rather than beside it or hanging off the tail.
+    this.stance.position.x = -_b.x;
+    this.stance.position.z = -_b.z;
   }
 
   applyRide(crouch, lean, air) {

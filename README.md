@@ -488,11 +488,21 @@ like a different bug:
 - **Arm local X drops the arm; local Y does almost nothing.** Guessing gave a
   rider who skated the whole game still holding a T-pose.
 
-The feet are planted by measurement, not prediction: after the clip and the
-crouch have both had their say there are two sources of leg angle, so the code
-looks at where the soles actually ended up and lifts the body until the lower
-one is on the deck. `node tools/rider-preview.mjs` renders every pose the game
-uses and prints the sole heights, which is how all of the above was found.
+A fourth, found by playing it: **his stance yaw is zero**, where the procedural
+rider's is 0.22 turns. That rider is built facing down the board and has to be
+turned into a stance; this one's stance comes from a clip that already contains
+it, so turning it again rotates a correct pose off true. Sweeping the yaw
+through a full turn and measuring the line between the feet against the board's
+long axis gives 99% alignment at 0° and 180°, and 12% at the quarter turns.
+180° is the same stance riding fakie.
+
+The feet are placed by measurement, not prediction. With the clip and the
+crouch both contributing leg position, no solve of either in isolation lands
+them anywhere in particular — so the code looks at where the soles ended up,
+lifts the body until the lower one is on the deck, and centres the midpoint of
+the feet on the board so one sits over each truck rather than both by the tail.
+`node tools/rider-preview.mjs` renders every pose the game uses and prints the
+sole heights, which is how all of the above was found.
 
 ## Notes
 
