@@ -466,11 +466,25 @@ deliberately faded out when the camera is close) and requantises the skin
 weights from float32 to normalized ubyte, which is spec-core and the single
 largest saving after the textures. **8.4MB → 1.56MB.**
 
-**Posing him.** The model has no animations, so the stance comes from two
-Mixamo clips and everything the clips cannot know — how far the pop is
-charged, whether the wheels are down — is layered on top as deltas. The clips
-ship as `AnimationClip` JSON rather than FBX: 846KB → 181KB, and no FBXLoader
-in the bundle.
+**Posing him.** The model has no animations, so the poses come from three
+Mixamo clips and everything the clips cannot know — whether the wheels are
+down — is layered on top as deltas. They ship as `AnimationClip` JSON rather
+than FBX: 1.3MB → 280KB, and no FBXLoader in the bundle.
+
+The crouch is the interesting one. It is a **pose, not a performance**: the
+game's charge is a continuous 0..1 from how long the pop has been held, so the
+jump clip is frozen at its deepest frame and simply weighted in, and the mixer
+blends toward it as the charge builds. `tools/anim.mjs` finds that frame by
+stepping each clip over the real skeleton and measuring the hips **above the
+feet** — measuring the hips alone reports the same number for every frame of
+every clip, because their position track is dropped and it is the legs that
+fold. The jump clip bottoms out at 0.844s, 0.556m tall against the riding
+stance's 0.73m.
+
+That replaced a two-bone IK solve whose every part — which axis, which sign,
+measured against a leg the clip had already bent — had to be rediscovered by
+experiment, and which still only ever produced a squat. The clip is a better
+crouch and less code.
 
 Three things had to be measured rather than reasoned about, and each one looked
 like a different bug:
@@ -487,6 +501,10 @@ like a different bug:
   recovers the centimetre-to-metre scale Mixamo puts on the Armature.
 - **Arm local X drops the arm; local Y does almost nothing.** Guessing gave a
   rider who skated the whole game still holding a T-pose.
+- **+X on the knee extends the leg here**, where on the primitive rider it
+  folds it. Swept across the full range the response is smooth and monotonic —
+  0.92m of standing height at +1.4 down to 0.29m at −1.4 — which is how the
+  sign was settled before the clip took the job over entirely.
 
 A fourth, found by playing it: **his stance yaw is zero**, where the procedural
 rider's is 0.22 turns. That rider is built facing down the board and has to be

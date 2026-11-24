@@ -65,20 +65,6 @@ import Config from '../core/Config.js';
  */
 const STANCE_YAW = 0;
 const REST_BEND = 0.2;
-const CROUCH_DROP = 0.22;
-
-/**
- * How much of the configured crouch this rider actually shows.
- *
- * CROUCH_DROP is 44% of standing height, which reads as loading up on a rider
- * made of primitives and as sitting on his heels on a body with knees. A
- * skater winding up an ollie drops about a quarter.
- *
- * Cosmetic only, and that is why it is allowed to differ: the pop is driven
- * by how long the charge was held, never by where the mesh's hips are. The
- * two riders pop identically and only look different doing it.
- */
-const CROUCH_SHOW = 0.55;
 
 /** Bones this needs by name, after three has stripped the `mixamorig:` colon. */
 const B = {
@@ -103,18 +89,6 @@ const _b = new Vector3();
 const _m = new Matrix4();
 const UP = new Vector3(0, 1, 0);
 
-/**
- * Two-bone IK: the knee angle and the thigh's offset from the straight
- * hip-to-ankle line, for a chain of `thigh` and `shin` spanning `d`.
- */
-function solveLeg(thigh, shin, d) {
-  const knee = Math.acos(
-    MathUtils.clamp((d * d - thigh * thigh - shin * shin) / (2 * thigh * shin), -1, 1),
-  );
-  const psi = Math.atan2(shin * Math.sin(knee), thigh + shin * Math.cos(knee));
-  return { knee, psi };
-}
-
 export default class GlbRider extends Group {
   /**
    * @param {string} url
@@ -128,6 +102,8 @@ export default class GlbRider extends Group {
     this.fade = 0;
     this.mixer = null;
     this.clips = {};
+    /** Time of each clip's deepest frame, from tools/anim.mjs. */
+    this.lowestAt = {};
     /** Latest pose asked for. Applied in update(), after the mixer has run. */
     this.pose = { crouch: 0, lean: 0, air: 0, bail: null };
     /** Same surface RiderMesh exposes, so Game can hold either one. */
@@ -190,17 +166,7 @@ export default class GlbRider extends Group {
     const ankleY = bones.legs[0].foot.getWorldPosition(_a).y;
     const thigh = Math.abs(hipY - kneeY);
     const shin = Math.abs(kneeY - ankleY);
-    // NOT thigh + shin: the bind pose has a slight bend in it, so the straight
-    // hip-to-ankle distance is a little shorter than the legs are long. Using
-    // the sum as the rest length would try to straighten the leg past where it
-    // was authored and lift the foot off the board before the crouch started.
-    const bindReach = Math.abs(hipY - ankleY);
-    this.limb = { thigh, shin, bindReach, ankleY };
-
-    // The angles the bind pose is already at. Every pose below is applied as a
-    // DELTA from these, because the bones are reset to their bind rotations
-    // first — so the rest pose has to come out as no change at all.
-    this.bindAngles = solveLeg(thigh, shin, bindReach);
+    this.limb = { thigh, shin, ankleY };
 
     // Where the sole is, relative to the toe bone. The bone is inside the
     // foot; the thing that has to touch the deck is the bottom of the shoe,
@@ -266,12 +232,28 @@ export default class GlbRider extends Group {
       this.mixer = new AnimationMixer(root);
       for (const [name, json] of Object.entries(anim)) {
         try {
-          const clip = AnimationClip.parse(json);
-          this.clips[name] = clip;
+          this.clips[name] = AnimationClip.parse(json);
+          // AnimationClip.parse keeps only what it understands, and the time
+          // of the clip's deepest frame is not part of that.
+          this.lowestAt[name] = json.lowestAt ?? 0;
         } catch (err) {
           console.warn(`clip ${name} would not parse:`, err);
         }
       }
+      // The crouch is a POSE, not a performance: the game's charge is a
+      // continuous 0..1 from how long the pop has been held, so the jump clip
+      // is frozen at its lowest frame and simply weighted in. Nothing about
+      // it plays — the mixer blends toward it as the charge builds, and that
+      // is both a better crouch than anything derived and less code than the
+      // IK it replaces.
+      if (this.clips.jump) {
+        this.crouchAction = this.mixer.clipAction(this.clips.jump);
+        this.crouchAction.play();
+        this.crouchAction.paused = true;
+        this.crouchAction.time = this.lowestAt.jump || 0;
+        this.crouchAction.weight = 0;
+      }
+
       const base = this.clips.stance || Object.values(this.clips)[0];
       if (base) {
         this.action = this.mixer.clipAction(base);
@@ -317,10 +299,28 @@ export default class GlbRider extends Group {
   update(rd = 0) {
     if (!this.loaded) return;
     this.restoreBind();
+    this.weightCrouch();
     // The clip is a rolling stance; it has nothing to say about a slam, so it
     // stops while one is happening rather than bobbing along underneath it.
     if (this.mixer && this.pose.bail === null) this.mixer.update(rd);
     this.apply();
+  }
+
+  /**
+   * Blend between riding and the bottom of a load-up, by how far the pop is
+   * charged. Both are authored clips; the mixer does the interpolation.
+   */
+  weightCrouch() {
+    if (!this.crouchAction || !this.action) return;
+    // Not while airborne: the legs tuck up there instead, and a crouch held
+    // into the air reads as someone sitting down mid-trick.
+    const c =
+      this.pose.bail !== null
+        ? 0
+        : MathUtils.clamp(this.pose.crouch * (1 - this.pose.air), 0, 1);
+    this.crouchAction.weight = c;
+    this.crouchAction.time = this.lowestAt.jump || 0;
+    this.action.weight = 1 - c;
   }
 
   /** Back to the authored pose, before the clip and the deltas go on. */
@@ -396,55 +396,23 @@ export default class GlbRider extends Group {
   }
 
   applyRide(crouch, lean, air) {
-    const { thigh, shin } = this.limb;
     const bones = this.bones;
 
-    // How far the hips sink.
-    const sink =
-      (REST_BEND * 0.055 + crouch * CROUCH_DROP * CROUCH_SHOW) *
-      Config.skater.height *
-      (1 - air);
-
-    // Two-bone IK, solved against the leg AS THE CLIP LEFT IT.
+    // No crouch solve here any more. It used to drop the hips and bend the
+    // legs with two-bone IK, and every part of that had to be rediscovered by
+    // experiment on this rig — which axis, which sign, measured against a leg
+    // the clip had already bent. The jump clip's lowest frame is a better
+    // crouch than any of it, and weightCrouch blends to it above.
     //
-    // This used to solve from a straight leg and apply the answer as a delta,
-    // which assumed the clip had not already bent the knee. It had — it is a
-    // skating stance — so the legs came out barely more bent at full charge
-    // than at rest, placeFeet then lifted the body to put the soles back on
-    // the deck, and the lift cancelled the sink exactly. The rider finished a
-    // full crouch standing taller than he started.
-    //
-    // So measure first. The limb lengths are fixed; the hip-to-ankle span is
-    // whatever the clip has made it this frame. Shorten that span by `sink`
-    // while dropping the hips by the same amount, and the ankle stays exactly
-    // where it was with the hips genuinely lower.
-    this.updateMatrixWorld(true);
-    const reach = thigh + shin;
-
-    bones.hips.position.addScaledVector(this.hipDown, sink);
-
-    for (const leg of bones.legs) {
-      const span = leg.up.getWorldPosition(_a).distanceTo(leg.foot.getWorldPosition(_b));
-      const from = solveLeg(thigh, shin, MathUtils.clamp(span, reach * 0.3, reach * 0.999));
-      const to = solveLeg(
-        thigh,
-        shin,
-        MathUtils.clamp(span - sink, reach * 0.3, reach * 0.999),
-      );
-      // Negated against the procedural rider's convention, because this rig
-      // bends the other way: measured, +X on the knee EXTENDS the leg here
-      // and lifts the hips, where on the primitive rig it folds them. Swept
-      // across the full range the response is smooth and monotonic, from
-      // 0.92m of standing height at +1.4 down to 0.29m at -1.4.
-      const dPsi = from.psi - to.psi;
-      const dKnee = from.knee - to.knee;
-
-      // In the air the legs stop supporting and tuck, which is the one time
-      // the feet are meant to leave the board.
-      leg.up.rotateX(MathUtils.lerp(dPsi, 0.55, air));
-      leg.low.rotateX(MathUtils.lerp(dKnee, -1.15, air));
-      // Counter-rotate the ankle by the total, so the sole stays flat.
-      leg.foot.rotateX(MathUtils.lerp(dKnee - dPsi, 0.4, air));
+    // What is left is the one thing no clip here covers: the tuck. In the air
+    // the legs stop supporting and come up, which is the only time the feet
+    // are meant to leave the board.
+    if (air > 0.001) {
+      for (const leg of bones.legs) {
+        leg.up.rotateX(0.55 * air);
+        leg.low.rotateX(-1.15 * air);
+        leg.foot.rotateX(0.4 * air);
+      }
     }
 
     // The upper body folds forward over the hips, spread across the spine so

@@ -29,6 +29,19 @@
  * every frame forever otherwise, and because a clip that has been retargeted
  * once is a clip anything can play.
  *
+ * ## The deepest frame
+ *
+ * Some clips are wanted as a POSE rather than as motion: the game's crouch is
+ * a continuous 0..1 from how long the pop has been charged, not something
+ * that plays at its own pace. So each clip is also sampled to find the frame
+ * where the hips sit lowest, and that time is written into the JSON. The game
+ * freezes the clip there and blends toward it by however far the charge has
+ * got.
+ *
+ * Measured by stepping the clip over the real skeleton rather than guessed
+ * from the track data, because the hips' own track says nothing about where
+ * the bent legs have actually put them.
+ *
  * Position tracks are dropped. The clips carry one, on the hips, and it is in
  * the FBX's units rather than the GLB's bone units — a hundred times smaller,
  * so played against the model it puts the hips on the floor and folds the
@@ -171,6 +184,39 @@ const clips = await page.evaluate(
         }
       }
 
+      // Where in this clip are the hips lowest? Stepped over the real
+      // skeleton, since that is the only thing that knows.
+      {
+        const probe = new THREE.AnimationMixer(model.scene);
+        const parsed = THREE.AnimationClip.parse(JSON.parse(JSON.stringify(json)));
+        const action = probe.clipAction(parsed);
+        action.play();
+        const hips = model.scene.getObjectByName('mixamorigHips');
+        const toes = ['Left', 'Right'].map((s) =>
+          model.scene.getObjectByName(`mixamorig${s}ToeBase`),
+        );
+        let best = { t: 0, y: Infinity };
+        const STEPS = 90;
+        for (let i = 0; i <= STEPS; i++) {
+          const t = (clip.duration * i) / STEPS;
+          probe.setTime(t);
+          model.scene.updateMatrixWorld(true);
+          // Hips ABOVE THE FEET, not hips in world. The hips' own position
+          // track is dropped, so they never move and measuring them alone
+          // reports the bind height for every frame of every clip — which is
+          // exactly what it did. The legs are what fold.
+          const hipY = hips.getWorldPosition(new THREE.Vector3()).y;
+          const footY = Math.min(
+            ...toes.map((b) => b.getWorldPosition(new THREE.Vector3()).y),
+          );
+          const y = hipY - footY;
+          if (y < best.y) best = { t, y };
+        }
+        action.stop();
+        json.lowestAt = Math.round(best.t * 1000) / 1000;
+        json.lowestHipY = Math.round(best.y * 1000) / 1000;
+      }
+
       for (const t of json.tracks) {
         const kind = t.name.split('.').pop();
         const p = PLACES[kind] ?? 4;
@@ -197,8 +243,8 @@ for (const [name, clip] of Object.entries(clips)) {
   const keys = clip.tracks.reduce((a, t) => a + t.times.length, 0);
   console.log(
     `  ${name.padEnd(10)} ${clip.duration.toFixed(2)}s  ${String(clip.tracks.length).padStart(3)} rotation tracks  ` +
-      `${keys} keys  (${clip.droppedPositionTracks} position dropped, ` +
-      `${clip.retargeted} bone(s) actually retargeted)`,
+      `${keys} keys  retargeted ${clip.retargeted}  ` +
+      `lowest stance at ${clip.lowestAt}s (${clip.lowestHipY}m tall)`,
   );
 }
 const bytes = fs.statSync(OUT).size;
