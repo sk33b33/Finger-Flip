@@ -11,6 +11,10 @@
  * window is already fitted to the viewport and a second variable pulling on the
  * same feel would make both impossible to tune.
  *
+ * One of them carries a `model` instead of a build. That one is a rigged glTF
+ * posed by view/GlbRider.js rather than primitives posed by RiderMesh; both
+ * answer to the same setPose, so Game holds either without knowing which.
+ *
  *   palette  suit / suitDark / trim / leather / accent / metal / lens
  *   head     'mask' | 'helmet' | 'hood' | 'cap'
  *   back     'katanas' | 'pack' | 'deck' | 'none'
@@ -19,20 +23,27 @@
 
 export const CHARACTERS = [
   {
-    id: 'merc',
-    name: 'The Merc',
-    blurb: 'Red suit, two swords, no fear. Skates like he heals.',
-    head: 'mask',
-    back: 'katanas',
-    bulk: 1.0,
+    // The one rider that is not built out of primitives. `model` is what makes
+    // the difference: Game hands an entry with one to view/GlbRider.js, which
+    // drives a rigged skeleton through the same setPose the others use.
+    //
+    // He replaced The Merc, who was modelled on Deadpool — fine for a
+    // prototype and not fine for anything published. That was the one thing in
+    // this project taken from somewhere else; this is a properly licensed
+    // model, so it is no longer true of anything here.
+    id: 'james',
+    name: 'James',
+    blurb: 'Black on black, cap down, headphones on. Rides like he has nowhere to be.',
+    model: 'rider-james.glb',
+    // Read by the roster UI for the swatch, since there is no palette to show.
     palette: {
-      suit: 0x9c1c22,
-      suitDark: 0x6b1216,
-      trim: 0x1b1c20,
-      leather: 0x7c5432,
-      accent: 0xb02028,
+      suit: 0x14161c,
+      suitDark: 0x0a0b0f,
+      trim: 0x2b2f38,
+      leather: 0xb8402f,
+      accent: 0xd8d2cc,
       metal: 0xc9ced8,
-      lens: 0xf4f4f2,
+      lens: 0x1a1d24,
     },
   },
   {
@@ -88,10 +99,22 @@ export const CHARACTERS = [
   },
 ];
 
-export const DEFAULT_CHARACTER = 'merc';
+export const DEFAULT_CHARACTER = 'james';
 
 export function findCharacter(id) {
   return CHARACTERS.find((c) => c.id === id) || null;
+}
+
+/**
+ * Resolve a saved id to one that still exists.
+ *
+ * Profiles are kept across versions and The Merc was removed, so a returning
+ * player has `characterId: 'merc'` in localStorage pointing at nobody. Falling
+ * back is the whole job — the alternative is a rider that silently fails to
+ * build on someone else's machine and nowhere else.
+ */
+export function resolveCharacter(id) {
+  return findCharacter(id) || findCharacter(DEFAULT_CHARACTER) || CHARACTERS[0];
 }
 
 /** Just the parts the roster UI needs, without the geometry hints. */
@@ -102,4 +125,9 @@ export function listCharacters() {
     blurb,
     swatch: palette,
   }));
+}
+
+/** Where a rider's model lives, or null for the ones built from primitives. */
+export function modelFor(id) {
+  return findCharacter(id)?.model || null;
 }

@@ -400,8 +400,8 @@ src/
   game/      Game (state machine), FingerMapper, Score, Profile, Events,
              Skate (the game of S.K.A.T.E.), Tutorial, Unlocks, Replay
   view/      Stage, CameraRig, BoardMesh, RiderMesh + Characters,
-             ParkMesh, TrickFX, PostFX, Decks (drawn, unlockable),
-             GhostHand (the tutorial's guide)
+             GlbRider (the one rigged rider), ParkMesh, TrickFX, PostFX,
+             Decks (drawn, unlockable), GhostHand (the tutorial's guide)
   ui/        Hud (in game), Shell (the menu)
   audio/     Audio (synthesised SFX), Music (the synthesised bed),
              Spotify (optional, PKCE)
@@ -425,6 +425,9 @@ tools/       chrome.mjs  (finds the container's Chromium; see below)
              icons.mjs   (draws the app icons from the deck's own outline)
              pwa.mjs     (serves dist/, unplugs the network, plays it anyway)
              music.mjs   (renders the bed to a WAV and measures it)
+             rider.mjs   (re-encodes a Mixamo export down to a shippable size)
+             anim.mjs    (retargets Mixamo FBX clips onto the model, to JSON)
+             rider-preview.mjs (the rigged rider in every pose the game uses)
 ```
 
 The `sim/` layer never imports the renderer, which is why the whole trick
@@ -445,6 +448,52 @@ Every gameplay value lives in `src/core/Config.js` — time scales, transition
 durations, finger forces, inertia, landing tolerances, scoring, camera framing.
 Nothing gameplay-affecting is a magic number anywhere else.
 
+## The one rider that is not procedural
+
+Three of the four riders are built out of primitives by `view/RiderMesh.js`.
+James is a rigged Mixamo character, posed by `view/GlbRider.js`, and he is the
+default. He replaced The Merc, who was modelled on Deadpool — fine for a
+prototype and not fine for anything published. That was the only thing in this
+project taken from someone else's design, so it is no longer true of anything
+here.
+
+**Getting him down to a shippable size.** The export is 8.4MB, of which 6.6MB
+is eight 1024² PNGs — thirteen times the whole rest of the game, and it would
+land in the service worker's precache too. `tools/rider.mjs` re-encodes the
+textures to WebP at sizes chosen by role (diffuse largest, normals and
+roughness quartered, since the rider is a few hundred pixels tall and is
+deliberately faded out when the camera is close) and requantises the skin
+weights from float32 to normalized ubyte, which is spec-core and the single
+largest saving after the textures. **8.4MB → 1.56MB.**
+
+**Posing him.** The model has no animations, so the stance comes from two
+Mixamo clips and everything the clips cannot know — how far the pop is
+charged, whether the wheels are down — is layered on top as deltas. The clips
+ship as `AnimationClip` JSON rather than FBX: 846KB → 181KB, and no FBXLoader
+in the bundle.
+
+Three things had to be measured rather than reasoned about, and each one looked
+like a different bug:
+
+- **The clips and the model disagree on the rest pose.** The model came out of
+  Blender, which is Z-up: its Armature carries +90° about X and its Hips bone
+  −90° to cancel it. The animation FBX has identity on both. Applied straight,
+  the rider skates lying on his side. `tools/anim.mjs` retargets every key
+  (`q_model = q_modelBind · q_clipBind⁻¹ · q_key`) at build time — a no-op for
+  most bones and the whole difference for the hips.
+- **The Hips bone's local axes are not world axes.** Setting `position.y` to
+  sink the hips slid the rider sideways while the legs straightened under him.
+  World up is taken back through the parent's matrix instead, which also
+  recovers the centimetre-to-metre scale Mixamo puts on the Armature.
+- **Arm local X drops the arm; local Y does almost nothing.** Guessing gave a
+  rider who skated the whole game still holding a T-pose.
+
+The feet are planted by measurement, not prediction: after the clip and the
+crouch have both had their say there are two sources of leg angle, so the code
+looks at where the soles actually ended up and lifts the body until the lower
+one is on the deck. `node tools/rider-preview.mjs` renders every pose the game
+uses and prints the sole heights, which is how all of the above was found.
+
 ## Notes
 
 All code, geometry, textures and audio here are original and generated at
@@ -457,10 +506,9 @@ by `tools/icons.mjs`. The slow-motion
 trick-control concept is inspired by the feel of skateboarding games of the
 mid-2000s; no code, assets, audio or animation has been taken from any of them.
 
-**One exception, stated plainly:** the default rider, "The Merc", is modelled on
-Deadpool, a character owned by Marvel and Disney. The mesh is built from scratch
-in `view/RiderMesh.js` rather than copied from anywhere, but the design is
-theirs. That is fine for a personal prototype and is not fine for anything
-published or sold. The other three riders are original, so the fix is to drop
-that one entry from `view/Characters.js` and change `DEFAULT_CHARACTER` —
-nothing else in the project depends on who the rider is.
+**The exception is the rider.** James is a Mixamo character with two Mixamo
+clips, licensed from Adobe rather than generated here — so the claim above
+covers everything else, not him. He replaced "The Merc", who was modelled on
+Deadpool: built from scratch in `view/RiderMesh.js`, but the design was
+Marvel's, which was fine for a prototype and not fine for anything published.
+Removing him was the point of the swap. The other three riders are original.

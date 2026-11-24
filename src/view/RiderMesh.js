@@ -70,8 +70,12 @@ export default class RiderMesh extends Group {
   constructor(character = DEFAULT_CHARACTER) {
     super();
 
+    // This builds a rider out of primitives, so it cannot build one that is a
+    // model file. Asked for that one it falls back to the first it can
+    // actually make, rather than producing a figure with no head.
+    const asked = (typeof character === 'string' ? findCharacter(character) : character) || null;
     const spec =
-      (typeof character === 'string' ? findCharacter(character) : character) || CHARACTERS[0];
+      asked && !asked.model ? asked : CHARACTERS.find((c) => !c.model) || CHARACTERS[0];
     this.character = spec;
     const P = spec.palette;
     // Everything on the rig is sized in radii, so one number changes the build.

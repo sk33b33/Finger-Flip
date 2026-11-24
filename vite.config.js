@@ -57,6 +57,13 @@ export default defineConfig({
         // but the thing in the middle of the screen is untextured.
         'deck-grip.webp',
         'deck-art.webp',
+        // The default rider. 1.5MB is most of what the install now costs, but
+        // leaving it out would mean the first offline launch has nobody on
+        // the board — and it is the one asset the game cannot draw itself.
+        'rider-james.glb',
+        // And his clips. Without them he loads in a T-pose, which is worse
+        // than not loading at all.
+        'rider-james.anim.json',
         // Not the splash art. It is 240KB an orientation, it is on screen for
         // as long as it takes to tap it, and the page has a solid colour under
         // it. Whichever one the player's phone actually asks for gets picked up

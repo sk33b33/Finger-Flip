@@ -39,6 +39,8 @@ import Tutorial from './Tutorial.js';
 import Replay from './Replay.js';
 import { earnedSet, newlyEarned, titleOf, isUnlocked, riderStates, deckStates } from './Unlocks.js';
 import GhostHand from '../view/GhostHand.js';
+import GlbRider from '../view/GlbRider.js';
+import { modelFor, resolveCharacter } from '../view/Characters.js';
 import Install from '../core/Install.js';
 import AudioEngine from '../audio/Audio.js';
 import SpotifyMusic from '../audio/Spotify.js';
@@ -75,6 +77,23 @@ const _rbBoard = { position: new Vector3(), quaternion: new Quaternion() };
 const _rbRider = { position: new Vector3(), quaternion: new Quaternion() };
 const _rbPose = { crouch: 0, lean: 0, air: 0 };
 const _rbOrbit = new Vector3();
+
+/**
+ * Build whichever kind of rider an id names.
+ *
+ * Two kinds: the ones built out of primitives by view/RiderMesh.js, and the
+ * rigged one driven by view/GlbRider.js. They expose the same surface, so
+ * everything downstream holds either without knowing which. An id that no
+ * longer exists resolves to the default — profiles outlive rosters, and The
+ * Merc was removed from under anyone who was riding him.
+ */
+function makeRider(id) {
+  const spec = resolveCharacter(id);
+  const model = modelFor(spec.id);
+  return model
+    ? new GlbRider(`${import.meta.env?.BASE_URL ?? '/'}${model}`, spec)
+    : new RiderMesh(spec.id);
+}
 const _rbLook = new Vector3();
 
 /**
@@ -127,7 +146,7 @@ export default class Game {
     this.postFX = new PostFX(this.stage.renderer);
     this.quality = new QualityManager(this.stage, this.postFX);
     this.boardMesh = new BoardMesh();
-    this.riderMesh = new RiderMesh();
+    this.riderMesh = makeRider(this.profile.data.characterId);
     this.parkMesh = new ParkMesh();
     this.trickFX = new TrickFX();
     this.ghostHand = new GhostHand();
@@ -501,17 +520,29 @@ export default class Game {
     this.deckId = id;
   }
 
+  /**
+   * Swap the rider.
+   *
+   * Two kinds now: the ones built out of primitives by view/RiderMesh.js, and
+   * the rigged one driven by view/GlbRider.js. They expose the same surface,
+   * so everything downstream of here holds either without knowing which.
+   *
+   * An id that no longer exists resolves to the default rather than failing —
+   * profiles outlive rosters, and The Merc has been removed from under anyone
+   * who was riding him.
+   */
   setCharacter(id) {
-    if (this.riderMesh.character?.id === id) return this.riderMesh.character;
+    const wanted = resolveCharacter(id);
+    if (this.riderMesh.character?.id === wanted.id) return this.riderMesh.character;
 
     const old = this.riderMesh;
     this.stage.scene.remove(old);
     old.traverse((o) => {
-      if (o.isMesh) o.geometry.dispose();
+      if (o.isMesh || o.isSkinnedMesh) o.geometry?.dispose();
     });
-    for (const m of old.allMaterials) m.dispose();
+    for (const m of old.allMaterials || []) m.dispose();
 
-    this.riderMesh = new RiderMesh(id);
+    this.riderMesh = makeRider(wanted.id);
     this.riderMesh.position.copy(old.position);
     this.riderMesh.quaternion.copy(old.quaternion);
     this.stage.scene.add(this.riderMesh);
@@ -1172,6 +1203,13 @@ export default class Game {
     }
     // The tail flame runs on real time, so it keeps flickering at its own rate
     // while the world is in slow motion.
+    // The rigged rider has two base clips; the procedural ones have none and
+    // ignore this entirely.
+    this.riderMesh.playBase?.(
+      this.state === State.ROLL && this.controls.push > 0 && this.skater.speed < Config.skater.maxSpeed * 0.55
+        ? 'move'
+        : 'stance',
+    );
     this.riderMesh.update(rd);
 
     // --- Camera ------------------------------------------------------------
