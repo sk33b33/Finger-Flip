@@ -121,7 +121,8 @@ try {
 
   console.log('SOLE height above the deck (want ~0 on the ground, >0 in the air):');
   for (const [name, p] of Object.entries(probes)) {
-    console.log(`  ${name.padEnd(8)} sole ${String(p.toes[0]).padEnd(8)} ${String(p.toes[1]).padEnd(8)} hipWorldY ${p.hipWorldY}`);
+    const stand = (p.hipWorldY - Math.min(...p.toes)).toFixed(3);
+    console.log(`  ${name.padEnd(8)} sole ${String(p.toes[0]).padEnd(8)} ${String(p.toes[1]).padEnd(8)} hip-above-feet ${stand}`);
   }
   for (const s of shots) {
     fs.writeFileSync(`${OUT}/rider-${s.name}.png`, Buffer.from(s.png.split(',')[1], 'base64'));

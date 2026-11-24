@@ -67,6 +67,19 @@ const STANCE_YAW = 0;
 const REST_BEND = 0.2;
 const CROUCH_DROP = 0.22;
 
+/**
+ * How much of the configured crouch this rider actually shows.
+ *
+ * CROUCH_DROP is 44% of standing height, which reads as loading up on a rider
+ * made of primitives and as sitting on his heels on a body with knees. A
+ * skater winding up an ollie drops about a quarter.
+ *
+ * Cosmetic only, and that is why it is allowed to differ: the pop is driven
+ * by how long the charge was held, never by where the mesh's hips are. The
+ * two riders pop identically and only look different doing it.
+ */
+const CROUCH_SHOW = 0.55;
+
 /** Bones this needs by name, after three has stripped the `mixamorig:` colon. */
 const B = {
   hips: 'mixamorigHips',
@@ -383,39 +396,66 @@ export default class GlbRider extends Group {
   }
 
   applyRide(crouch, lean, air) {
-    const { thigh, shin, bindReach } = this.limb;
+    const { thigh, shin } = this.limb;
     const bones = this.bones;
 
-    // How far the hips sink. Rotating the joints and leaving the hips put is
-    // what lifts the feet off the board, so the hips move and the legs solve.
-    const sink = (REST_BEND * 0.055 + crouch * CROUCH_DROP) * Config.skater.height * (1 - air);
-    const d = MathUtils.clamp(bindReach - sink, (thigh + shin) * 0.4, (thigh + shin) * 0.999);
+    // How far the hips sink.
+    const sink =
+      (REST_BEND * 0.055 + crouch * CROUCH_DROP * CROUCH_SHOW) *
+      Config.skater.height *
+      (1 - air);
 
-    // Two-bone IK, identical in form to the procedural rider's: given how far
-    // the hip dropped, find the knee and hip angles that leave the ankle where
-    // it was, so the soles stay on the deck however deep the crouch goes.
+    // Two-bone IK, solved against the leg AS THE CLIP LEFT IT.
     //
-    // A delta from the angles the straight leg would be at, because these are
-    // laid over whatever the clip wrote rather than replacing it.
-    const now = solveLeg(thigh, shin, d);
-    const bind = this.bindAngles;
-    const hipRot = MathUtils.lerp(-(now.psi - bind.psi), -1.0, air);
-    const kneeRot = MathUtils.lerp(now.knee - bind.knee, 1.6, air);
-    const ankleRot = MathUtils.lerp(now.psi - bind.psi - (now.knee - bind.knee), -0.5, air);
+    // This used to solve from a straight leg and apply the answer as a delta,
+    // which assumed the clip had not already bent the knee. It had — it is a
+    // skating stance — so the legs came out barely more bent at full charge
+    // than at rest, placeFeet then lifted the body to put the soles back on
+    // the deck, and the lift cancelled the sink exactly. The rider finished a
+    // full crouch standing taller than he started.
+    //
+    // So measure first. The limb lengths are fixed; the hip-to-ankle span is
+    // whatever the clip has made it this frame. Shorten that span by `sink`
+    // while dropping the hips by the same amount, and the ankle stays exactly
+    // where it was with the hips genuinely lower.
+    this.updateMatrixWorld(true);
+    const reach = thigh + shin;
 
     bones.hips.position.addScaledVector(this.hipDown, sink);
 
     for (const leg of bones.legs) {
-      leg.up.rotateX(hipRot);
-      leg.low.rotateX(kneeRot);
-      leg.foot.rotateX(ankleRot);
+      const span = leg.up.getWorldPosition(_a).distanceTo(leg.foot.getWorldPosition(_b));
+      const from = solveLeg(thigh, shin, MathUtils.clamp(span, reach * 0.3, reach * 0.999));
+      const to = solveLeg(
+        thigh,
+        shin,
+        MathUtils.clamp(span - sink, reach * 0.3, reach * 0.999),
+      );
+      // Negated against the procedural rider's convention, because this rig
+      // bends the other way: measured, +X on the knee EXTENDS the leg here
+      // and lifts the hips, where on the primitive rig it folds them. Swept
+      // across the full range the response is smooth and monotonic, from
+      // 0.92m of standing height at +1.4 down to 0.29m at -1.4.
+      const dPsi = from.psi - to.psi;
+      const dKnee = from.knee - to.knee;
+
+      // In the air the legs stop supporting and tuck, which is the one time
+      // the feet are meant to leave the board.
+      leg.up.rotateX(MathUtils.lerp(dPsi, 0.55, air));
+      leg.low.rotateX(MathUtils.lerp(dKnee, -1.15, air));
+      // Counter-rotate the ankle by the total, so the sole stays flat.
+      leg.foot.rotateX(MathUtils.lerp(dKnee - dPsi, 0.4, air));
     }
 
     // The upper body folds forward over the hips, spread across the spine so
     // it curves instead of hinging at the waist.
     const fold = REST_BEND + crouch * 0.8 + air * 0.9;
+    // 0.055 a bone, not 0.1. Measured: 0.3 radians of total spine bend takes
+    // the head from 0.59m above the hips to 0.38m — bent double, which on top
+    // of the leg crouch reads as searching for a dropped key rather than
+    // loading an ollie. The direction was right; the amount was not.
     for (const bone of [bones.spine, bones.spine1, bones.spine2]) {
-      if (bone) bone.rotateX(fold * 0.1);
+      if (bone) bone.rotateX(fold * 0.055);
     }
     if (bones.neck) bones.neck.rotateX(-fold * 0.1);
     if (bones.head) bones.head.rotateX(-fold * 0.12);
