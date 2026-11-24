@@ -411,7 +411,8 @@ test/        headless sim + trick vocabulary + profile/challenges
 public/      splash{,-portrait}.{webp,jpg}  the title card
              deck-{grip,art}.{webp,jpg}      the two faces of the board
              manifest.webmanifest, icons/    the installed app
-tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
+tools/       chrome.mjs  (finds the container's Chromium; see below)
+             shoot.mjs   (plays a kickflip in a browser, shoots every beat)
              menu.mjs    (every menu tab at four device shapes)
              maps.mjs    (rides each park and shoots the approach to each lip)
              roster.mjs  (every character from the chase camera)
@@ -428,6 +429,17 @@ tools/       shoot.mjs   (plays a kickflip in a browser, shoots every beat)
 
 The `sim/` layer never imports the renderer, which is why the whole trick
 pipeline can be driven and graded from Node.
+
+Every browser tool gets its Chromium from `tools/chrome.mjs` rather than naming
+one. This container ships its own build and points `PLAYWRIGHT_BROWSERS_PATH`
+at it, and that build is not the one the pinned Playwright would fetch — so the
+path cannot be left to Playwright, but it cannot be hardcoded either, because
+the build number in it changes when the container is rebuilt and then every
+tool breaks at once with an `ENOENT` that reads like a Playwright fault. It has
+happened: the tools were pinned to 1194, Playwright 1.49 wanted 1148, and the
+container had moved to 1243. Three numbers, no two the same. So it looks, takes
+the newest, and copes with the directory layout changing (`chrome-linux/` in
+older builds, `chrome-linux64/` in newer ones).
 
 Every gameplay value lives in `src/core/Config.js` — time scales, transition
 durations, finger forces, inertia, landing tolerances, scoring, camera framing.

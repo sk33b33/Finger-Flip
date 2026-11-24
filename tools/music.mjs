@@ -11,6 +11,7 @@
  *   node tools/music.mjs [out.wav]
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './chrome.mjs';
 import { createServer } from 'vite';
 import fs from 'node:fs';
 
@@ -20,8 +21,7 @@ const SECONDS = 24;
 const server = await createServer({ server: { port: 5205 }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--no-sandbox'],
+  ...launchOptions({ gpu: false }),
 });
 const page = await browser.newPage();
 await page.goto('http://127.0.0.1:5205/', { waitUntil: 'domcontentloaded' });

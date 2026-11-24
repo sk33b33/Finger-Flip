@@ -13,6 +13,7 @@
  *   npm run build && node tools/pwa.mjs
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './chrome.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,8 +52,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
+  ...launchOptions(),
 });
 const context = await browser.newContext({ viewport: { width: 420, height: 880 } });
 const page = await context.newPage();

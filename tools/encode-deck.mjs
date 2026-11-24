@@ -14,6 +14,7 @@
  *   node tools/encode-deck.mjs [grip.png] [graphic.png]
  */
 import { chromium } from 'playwright';
+import { launchOptions } from './chrome.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -33,8 +34,7 @@ const PROFILE_STOPS = 48;
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--no-sandbox'],
+  ...launchOptions({ gpu: false }),
 });
 const page = await browser.newPage();
 
